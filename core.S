@@ -109,151 +109,199 @@
 
 
 .text
+#
+# SGEMM Basic Unit Kernel
+#
+# The SGEMM basic unit is a matrix multiplication of C(5,16) += A(5xK) x B(Kx16)
+# sliced out of C(320x320) += A(320xK) x B(Kx320) matrix tiles. There are 1280
+# basic units per tile operation. K is divisible by 4 such that 4 <= K <= 64.
+#
+# An SGEMM basic unit executes K sets of 10 FMAs. The K sets are broken into
+# four quarters, executed in alternate ascending-descending fashion:
+#
+#    Quarter 0:  k=0 mod 4;  pk=+1;  k+pk=1 mod 4;  iterate post k+=4
+#                exit: k+=pk, pk=+pk*2=+2, k == K+1
+#    Quarter 1:  k=1 mod 4;  pk=+2;  k+pk=3 mod 4;  iterate pre  k-=4
+#                exit: k+=pk, pk=-pk/2=-1, k ==   3
+#    Quarter 2:  k=3 mod 4;  pk=-1;  k+pk=2 mod 4;  iterate post k+=4
+#                exit: k+=pk, pk=+pk*2=-2, k == K+2
+#    Quarter 3:  k=2 mod 4;  pk=-2;  k+pk=0 mod 4;  iterate pre  k-=4
+#                exit: k+=pk, pk=-pk/2=+1, k ==   0
+#
+# The ascent-descend style has the advantage of leaving the input registers
+# unchanged by balancing increments and decrements.
+#
 .align 256
+.global sgemm_bu_core_entry   # Purely for debug information, DO NOT CALL DIRECTLY!
+sgemm_bu_core_entry:          # Purely for debug information, DO NOT CALL DIRECTLY!
 .Lsgemm_bu_core_entry_clr:                      # REGISTERS ON ENTRY:
-                                                #   RAX: LinkRegister
-                                                #   RDI: &A[ m ][k=0]
-                                                #   RSI: &B[k=0][ n ]
-                                                #   RDX: &C[ m ][ n ]
-                                                #   RCX: PrefetchBase (typically: &B[0][n+16]
-                                                #                              or &B[0][n-48])
-                                                #   R8:  PrefetchStop
+                                                #   RAX: &A[ m ][k=0]   A[320][ 64]
+                                                #        The A-pointer **cannot** be moved from RAX!!!
+                                                #   RBX: &B[k=0][ n ]   B[ 64][320]
+                                                #   RCX: &C[ m ][ n ]   C[320][320]
+                                                #   RDX: +1*320*4
+                                                #   RDI: LinkRegister1
+                                                #   RSI: LinkRegister2
+                                                #   R8:  &A[ m ][k=K]
                                                 # REGISTERS CLOBBERED ON EXIT:
-                                                #   RDI, RSI, RCX
-                                                # ************ BU CORE, PEELED ITER ************
-    prefetcht0  [rcx]                           # Begin prefetch of B-slice for next BU
-    addq         rcx,   320*4                   # Increment prefetch pointer (Bnext[k++][n])
-    vmovaps      ymm5,  [rsi]                   # Load B[k, n  :n+ 8]
-    vbroadcastss ymm0,  [rdi]                   # Load A[m+0, k]
-    vmulps       ymm6,   ymm0,  ymm5            #  => acc00 = A[0,k] * B[k,n:n+8]
-    vbroadcastss ymm1,  [rdi+1*64*4]            # Load A[m+1, k]
-    vmulps       ymm8,   ymm1,  ymm5            #  => acc10 = A[1,k] * B[k,n:n+8]
-    vbroadcastss ymm2,  [rdi+2*64*4]            # Load A[m+2, k]
-    vmulps       ymm10,  ymm2,  ymm5            #  => acc20 = A[2,k] * B[k,n:n+8]
-    vbroadcastss ymm3,  [rdi+3*64*4]            # Load A[m+3, k]
-    vmulps       ymm12,  ymm3,  ymm5            #  => acc30 = A[3,k] * B[k,n:n+8]
-    vbroadcastss ymm4,  [rdi+4*64*4]            # Load A[m+4, k]
-    vmulps       ymm14,  ymm4,  ymm5            #  => acc40 = A[4,k] * B[k,n:n+8]
-    vmovaps      ymm5,  [rsi+32]                # Load B[k, n+8:n+16]
-    addq         rsi,   320*4                   # Increment B-pointer (B[k++][n])
-    leaq         rdi,   [rdi+4]                 # Increment A-pointer (A[m][k++], no rflags)
-    vmulps       ymm7,   ymm0,  ymm5            #  => acc01 = A[0,k] * B[k,n+8:n+16]
-    vmulps       ymm9,   ymm1,  ymm5            #  => acc11 = A[1,k] * B[k,n+8:n+16]
-    vmulps       ymm11,  ymm2,  ymm5            #  => acc21 = A[2,k] * B[k,n+8:n+16]
-    vmulps       ymm13,  ymm3,  ymm5            #  => acc31 = A[3,k] * B[k,n+8:n+16]
-    vmulps       ymm15,  ymm4,  ymm5            #  => acc41 = A[4,k] * B[k,n+8:n+16]
-    cmpq         rcx,    r8                     # Exit if k == 0 (equivalently: &B[k] == &B[0]
-    je .Lsgemm_bu_core_exit                     # Single-iteration early-exit
-.align 128                                      # ************ BU CORE, EXTREMELY HOT ************
+                                                # ************ BU CORE FORWARD, PEELED ITER ************
+    vmovaps      ymm4,  [rbx]                   # Load B[k, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+32]                # Load B[k, n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*64*4]            # Load A[m+1, k]
+    vmulps       ymm8,   ymm3,  ymm4            #  => acc10 += A[1,k] * B[k,n:n+8]
+    vmulps       ymm9,   ymm3,  ymm5            #  => acc11 += A[1,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax]                   # Load A[m+0, k]
+    vmulps       ymm6,   ymm3,  ymm4            #  => acc00 += A[0,k] * B[k,n:n+8]
+    vmulps       ymm7,   ymm3,  ymm5            #  => acc01 += A[0,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*64*4]            # Load A[m+3, k]
+    vmulps       ymm12,  ymm3,  ymm4            #  => acc30 += A[3,k] * B[k,n:n+8]
+    vmulps       ymm13,  ymm3,  ymm5            #  => acc31 += A[3,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+2*64*4]            # Load A[m+2, k]
+    vmulps       ymm10,  ymm3,  ymm4            #  => acc20 += A[2,k] * B[k,n:n+8]
+    vmulps       ymm11,  ymm3,  ymm5            #  => acc21 += A[2,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*64*4]            # Load A[m+4, k]
+    addq         rax,    4*4                    # Increment A-pointer (A[m][k+=4])
+    vmulps       ymm14,  ymm3,  ymm4            #  => acc40 += A[4,k] * B[k,n:n+8]
+    vmulps       ymm15,  ymm3,  ymm5            #  => acc41 += A[4,k] * B[k,n+8:n+16]
+    prefetcht0  [rbx+rdx]                       # Initiate prefetch of B-slice for next sub-BU
+    leaq         rbx,   [rbx+4*320*4]           # Increment B-pointer (B[k+=4][n], no rflags)
+    cmpq         rax,    r8                     # Exit if k >= K (equivalently: &A[k] >= &A[K])
+    jge  .Lsgemm_bu_core_forward_exit           # Single-iteration early-exit
+.align 128                                      # ************ BU CORE FORWARD, EXTREMELY HOT ************
 .Lsgemm_bu_core_entry_acc:                      # do{
-    prefetcht0  [rcx]                           #     Begin prefetch of B-slice for next BU
-    addq         rcx,   320*4                   #     Increment prefetch pointer (Bnext[k++][n])
-    vmovaps      ymm5,  [rsi]                   #     Load B[k, n  :n+ 8]
-    vbroadcastss ymm0,  [rdi]                   #     Load A[m+0, k]
-    vfmadd231ps  ymm6,   ymm0,  ymm5            #      => acc00 += A[0,k] * B[k,n:n+8]
-    vbroadcastss ymm1,  [rdi+1*64*4]            #     Load A[m+1, k]
-    vfmadd231ps  ymm8,   ymm1,  ymm5            #      => acc10 += A[1,k] * B[k,n:n+8]
-    vbroadcastss ymm2,  [rdi+2*64*4]            #     Load A[m+2, k]
-    vfmadd231ps  ymm10,  ymm2,  ymm5            #      => acc20 += A[2,k] * B[k,n:n+8]
-    vbroadcastss ymm3,  [rdi+3*64*4]            #     Load A[m+3, k]
-    vfmadd231ps  ymm12,  ymm3,  ymm5            #      => acc30 += A[3,k] * B[k,n:n+8]
-    vbroadcastss ymm4,  [rdi+4*64*4]            #     Load A[m+4, k]
-    vfmadd231ps  ymm14,  ymm4,  ymm5            #      => acc40 += A[4,k] * B[k,n:n+8]
-    vmovaps      ymm5,  [rsi+32]                #     Load B[k, n+8:n+16]
-    addq         rsi,   320*4                   #     Increment B-pointer (B[k++][n])
-    leaq         rdi,   [rdi+4]                 #     Increment A-pointer (A[m][k++], no rflags)
-    vfmadd231ps  ymm7,   ymm0,  ymm5            #      => acc01 += A[0,k] * B[k,n+8:n+16]
-    vfmadd231ps  ymm9,   ymm1,  ymm5            #      => acc11 += A[1,k] * B[k,n+8:n+16]
-    vfmadd231ps  ymm11,  ymm2,  ymm5            #      => acc21 += A[2,k] * B[k,n+8:n+16]
+.Lsgemm_bu_core_forward:                        #
+    vmovaps      ymm4,  [rbx]                   #     Load B[k, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+32]                #     Load B[k, n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*64*4]            #     Load A[m+1, k]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax]                   #     Load A[m+0, k]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*64*4]            #     Load A[m+3, k]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k] * B[k,n:n+8]
     vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k] * B[k,n+8:n+16]
-    vfmadd231ps  ymm15,  ymm4,  ymm5            #      => acc41 += A[4,k] * B[k,n+8:n+16]
-    cmpq         rcx,    r8                     #     Exit if k == 0 (equivalently: &B[k] == &B[0]
-    jne .Lsgemm_bu_core_entry_acc               # }while(k)
-.Lsgemm_bu_core_exit:                           # ************ BU CORE, EXTREMELY HOT ************
-    jmp          rax                            # RETURN (LINK REGISTER)
-.align 256                                      # BU CORE EXIT
+    vbroadcastss ymm3,  [rax+2*64*4]            #     Load A[m+2, k]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*64*4]            #     Load A[m+4, k]
+    addq         rax,    4*4                    #     Increment A-pointer (A[m][k+=4])
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k] * B[k,n+8:n+16]
+    prefetcht0  [rbx+rdx]                       #     Initiate prefetch of B-slice for next sub-BU
+    leaq         rbx,   [rbx+4*320*4]           #     Increment B-pointer (B[k+=4][n], no rflags)
+    cmpq         rax,    r8                     #     Exit if k >= K (equivalently: &A[k] >= &A[K])
+    jnge .Lsgemm_bu_core_forward                # }while()
+.Lsgemm_bu_core_forward_exit:                   # ************ BU CORE FORWARD, EXTREMELY HOT ************
+    xor          al,     4                      # Begin fetching from A-pointer addresses corresponding to prefetch.
+                                                # (XOR AL, imm8 selected to save 2 bytes and fit within 2 L1i$ cachelines)
+    addq         rbx,    rdx                    # Begin fetching from previously prefetched B-pointer addresses.
+    addq         rdx,    rdx                    # Double the prefetch offset.
+.align 256                                      # ************ BU CORE BACKWARD, EXTREMELY HOT ************
+.Lsgemm_bu_core_backward:                       # do{
+    leaq         rbx,   [rbx-4*320*4]           #     Pre-decrement B-pointer (B[k-=4][n], no rflags)
+    vmovaps      ymm4,  [rbx]                   #     Load B[k, n  :n+ 8]
+    subq         rax,    4*4                    #     Pre-decrement A-pointer (A[m][k-=4])
+    vmovaps      ymm5,  [rbx+32]                #     Load B[k, n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*64*4]            #     Load A[m+1, k]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax]                   #     Load A[m+0, k]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*64*4]            #     Load A[m+3, k]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+2*64*4]            #     Load A[m+2, k]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*64*4]            #     Load A[m+4, k]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k] * B[k,n+8:n+16]
+    prefetcht0  [rbx+rdx]                       #     Initiate prefetch of B-slice for next sub-BU
+    test         al,     0b11110000             #     Exit if k == 0 (equivalently: &A[k] == &A[0])
+    jne  .Lsgemm_bu_core_backward               # }while()
+                                                # ************ BU CORE BACKWARD, EXTREMELY HOT ************
+    addq         rbx,    rdx                    # Begin fetching from previously prefetched B-pointer addresses.
+    sar          rdx,    1                      # Halve  the prefetch offset.
+    neg          rdx                            # Negate the prefetch offset.
+.align 128
+    xor          al,     8                      # Begin fetching from A-pointer addresses corresponding to prefetch.
+                                                # (XOR AL, imm8 selected to save 2 bytes and fit within 2 L1i$ cachelines)
+    test         al,     0b00001000
+    jne  .Lsgemm_bu_core_forward                # If first half complete, begin second half.
+    jmp          rdi                            # RETURN (LINK REGISTER)
+.byte 0x66, 0x66, 0x66, 0x0F, 0x1F              # 11-byte-
+.byte 0x84, 0x00, 0x00, 0x00, 0x00, 0x00        # nop padding
+.byte 0x66, 0x66, 0x66, 0x0F, 0x1F              # 11-byte-
+.byte 0x84, 0x00, 0x00, 0x00, 0x00, 0x00        # nop padding
+.byte 0x66, 0x66, 0x66, 0x0F, 0x1F              # 11-byte-
+.byte 0x84, 0x00, 0x00, 0x00, 0x00, 0x00        # nop padding
 .Lsgemm_bu_eject_beta_one:                      # REGISTERS ON ENTRY:
-                                                #   RBX: LinkRegister
-                                                #   RDX: &C[ m ][ n ]
-                                                #   R13: alpha
+                                                #   RSI:  LinkRegister2
+                                                #   RCX:  &C[ m ][ n ]
+                                                #   YMM0: alpha
                                                 # REGISTERS CLOBBERED ON EXIT:
-                                                #   YMM5-YMM15
+                                                #   YMM6-YMM15
                                                 # ************ BU EJECTION (beta=1) ************
-    vmovd        xmm5,   r13d                   #   Copy  alpha
-    vbroadcastss ymm5,   xmm5                   #   Splat alpha
-    vfmadd213ps  ymm6,   ymm5, [rdx]            #   alpha * acc00 -->
-    vmovaps     [rdx],            ymm6          #                        C[0][n:n+8]
-    vfmadd213ps  ymm8,   ymm5, [rdx+1*320*4]    #   alpha * acc10 -->
-    vmovaps     [rdx+1*320*4],    ymm8          #                        C[1][n:n+8]
-    vfmadd213ps  ymm10,  ymm5, [rdx+2*320*4]    #   alpha * acc20 -->
-    vmovaps     [rdx+2*320*4],    ymm10         #                        C[2][n:n+8]
-    vfmadd213ps  ymm12,  ymm5, [rdx+3*320*4]    #   alpha * acc30 -->
-    vmovaps     [rdx+3*320*4],    ymm12         #                        C[3][n:n+8]
-    vfmadd213ps  ymm14,  ymm5, [rdx+4*320*4]    #   alpha * acc40 -->
-    vmovaps     [rdx+4*320*4],    ymm14         #                        C[4][n:n+8]
-    vfmadd213ps  ymm7,   ymm5, [rdx+32]         #   alpha * acc01 -->
-    vmovaps     [rdx+32],         ymm7          #                        C[0][n+8:n+16]
-    vfmadd213ps  ymm9,   ymm5, [rdx+1*320*4+32] #   alpha * acc11 -->
-    vmovaps     [rdx+1*320*4+32], ymm9          #                        C[1][n+8:n+16]
-    vfmadd213ps  ymm11,  ymm5, [rdx+2*320*4+32] #   alpha * acc21 -->
-    vmovaps     [rdx+2*320*4+32], ymm11         #                        C[2][n+8:n+16]
-    vfmadd213ps  ymm13,  ymm5, [rdx+3*320*4+32] #   alpha * acc31 -->
-    vmovaps     [rdx+3*320*4+32], ymm13         #                        C[3][n+8:n+16]
-    vfmadd213ps  ymm15,  ymm5, [rdx+4*320*4+32] #   alpha * acc41 -->
-    vmovaps     [rdx+4*320*4+32], ymm15         #                        C[4][n+8:n+16]
-    jmp          rbx                            # RETURN (LINK REGISTER)
-.align 64
-.Lsgemm_bu_eject_beta_zero:                     # REGISTERS ON ENTRY:
-                                                #   RBX: LinkRegister
-                                                #   RDX: &C[ m ][ n ]
-                                                #   R13: alpha
-                                                # REGISTERS CLOBBERED ON EXIT:
-                                                #   YMM5-YMM15
-                                                # ************ BU EJECTION (beta=0) ************
-    vmovd        xmm5,   r13d                   #   Copy  alpha
-    vbroadcastss ymm5,   xmm5                   #   Splat alpha
-    vmulps       ymm6,   ymm6,    ymm5          #   alpha * acc00 -->
-    vmovaps     [rdx],            ymm6          #                        C[0][n:n+8]
-    vmulps       ymm8,   ymm8,    ymm5          #   alpha * acc10 -->
-    vmovaps     [rdx+1*320*4],    ymm8          #                        C[1][n:n+8]
-    vmulps       ymm10,  ymm10,   ymm5          #   alpha * acc20 -->
-    vmovaps     [rdx+2*320*4],    ymm10         #                        C[2][n:n+8]
-    vmulps       ymm12,  ymm12,   ymm5          #   alpha * acc30 -->
-    vmovaps     [rdx+3*320*4],    ymm12         #                        C[3][n:n+8]
-    vmulps       ymm14,  ymm14,   ymm5          #   alpha * acc40 -->
-    vmovaps     [rdx+4*320*4],    ymm14         #                        C[4][n:n+8]
-    vmulps       ymm7,   ymm7,    ymm5          #   alpha * acc01 -->
-    vmovaps     [rdx+32],         ymm7          #                        C[0][n+8:n+16]
-    vmulps       ymm9,   ymm9,    ymm5          #   alpha * acc11 -->
-    vmovaps     [rdx+1*320*4+32], ymm9          #                        C[1][n+8:n+16]
-    vmulps       ymm11,  ymm11,   ymm5          #   alpha * acc21 -->
-    vmovaps     [rdx+2*320*4+32], ymm11         #                        C[2][n+8:n+16]
-    vmulps       ymm13,  ymm13,   ymm5          #   alpha * acc31 -->
-    vmovaps     [rdx+3*320*4+32], ymm13         #                        C[3][n+8:n+16]
-    vmulps       ymm15,  ymm15,   ymm5          #   alpha * acc41 -->
-    vmovaps     [rdx+4*320*4+32], ymm15         #                        C[4][n+8:n+16]
-    jmp          rbx                            # RETURN (LINK REGISTER)
-.align 64
+    vfmadd213ps  ymm8,   ymm0, [rcx+1*320*4]    #   alpha * acc10 -->
+    vfmadd213ps  ymm9,   ymm0, [rcx+1*320*4+32] #   alpha * acc11 -->
+    vfmadd213ps  ymm6,   ymm0, [rcx]            #   alpha * acc00 -->
+    vfmadd213ps  ymm7,   ymm0, [rcx+32]         #   alpha * acc01 -->
+    vfmadd213ps  ymm12,  ymm0, [rcx+3*320*4]    #   alpha * acc30 -->
+    vfmadd213ps  ymm13,  ymm0, [rcx+3*320*4+32] #   alpha * acc31 -->
+    vfmadd213ps  ymm10,  ymm0, [rcx+2*320*4]    #   alpha * acc20 -->
+    vfmadd213ps  ymm11,  ymm0, [rcx+2*320*4+32] #   alpha * acc21 -->
+    vfmadd213ps  ymm14,  ymm0, [rcx+4*320*4]    #   alpha * acc40 -->
+    vfmadd213ps  ymm15,  ymm0, [rcx+4*320*4+32] #   alpha * acc41 -->
+.align 256
 .Lsgemm_bu_eject_alpha_one_beta_zero:           # REGISTERS ON ENTRY:
-                                                #   RBX: LinkRegister
-                                                #   RDX: &C[ m ][ n ]
+                                                #   RSI:  LinkRegister2
+                                                #   RCX: &C[ m ][ n ]
                                                 # REGISTERS CLOBBERED ON EXIT:
                                                 #   (None)
                                                 # ************ BU EJECTION (alpha=1, beta=0) ************
-    vmovaps     [rdx],            ymm6          #                        C[0][n:n+8]
-    vmovaps     [rdx+1*320*4],    ymm8          #                        C[1][n:n+8]
-    vmovaps     [rdx+2*320*4],    ymm10         #                        C[2][n:n+8]
-    vmovaps     [rdx+3*320*4],    ymm12         #                        C[3][n:n+8]
-    vmovaps     [rdx+4*320*4],    ymm14         #                        C[4][n:n+8]
-    vmovaps     [rdx+32],         ymm7          #                        C[0][n+8:n+16]
-    vmovaps     [rdx+1*320*4+32], ymm9          #                        C[1][n+8:n+16]
-    vmovaps     [rdx+2*320*4+32], ymm11         #                        C[2][n+8:n+16]
-    vmovaps     [rdx+3*320*4+32], ymm13         #                        C[3][n+8:n+16]
-    vmovaps     [rdx+4*320*4+32], ymm15         #                        C[4][n+8:n+16]
-    jmp          rbx                            # RETURN (LINK REGISTER)
+    vmovaps     [rcx+1*320*4],    ymm8          #                        C[1][n:n+8]
+    vmovaps     [rcx+1*320*4+32], ymm9          #                        C[1][n+8:n+16]
+    vmovaps     [rcx],            ymm6          #                        C[0][n:n+8]
+    vmovaps     [rcx+32],         ymm7          #                        C[0][n+8:n+16]
+    vmovaps     [rcx+3*320*4],    ymm12         #                        C[3][n:n+8]
+    vmovaps     [rcx+3*320*4+32], ymm13         #                        C[3][n+8:n+16]
+    vmovaps     [rcx+2*320*4],    ymm10         #                        C[2][n:n+8]
+    vmovaps     [rcx+2*320*4+32], ymm11         #                        C[2][n+8:n+16]
+    vmovaps     [rcx+4*320*4],    ymm14         #                        C[4][n:n+8]
+    vmovaps     [rcx+4*320*4+32], ymm15         #                        C[4][n+8:n+16]
+    jmp          rsi                            # RETURN (LINK REGISTER)
+.Lsgemm_bu_eject_beta_zero:                     # REGISTERS ON ENTRY:
+                                                #   RSI:  LinkRegister2
+                                                #   RCX:  &C[ m ][ n ]
+                                                #   YMM0: alpha
+                                                # REGISTERS CLOBBERED ON EXIT:
+                                                #   YMM5-YMM15
+                                                # ************ BU EJECTION (beta=0) ************
+    vmulps       ymm8,   ymm8,    ymm0          #   alpha * acc10 -->
+    vmulps       ymm9,   ymm9,    ymm0          #   alpha * acc11 -->
+    vmulps       ymm6,   ymm6,    ymm0          #   alpha * acc00 -->
+    vmulps       ymm7,   ymm7,    ymm0          #   alpha * acc01 -->
+    vmulps       ymm12,  ymm12,   ymm0          #   alpha * acc30 -->
+    vmulps       ymm13,  ymm13,   ymm0          #   alpha * acc31 -->
+    vmulps       ymm10,  ymm10,   ymm0          #   alpha * acc20 -->
+    vmulps       ymm11,  ymm11,   ymm0          #   alpha * acc21 -->
+    vmulps       ymm14,  ymm14,   ymm0          #   alpha * acc40 -->
+    vmulps       ymm15,  ymm15,   ymm0          #   alpha * acc41 -->
+    jmp .Lsgemm_bu_eject_alpha_one_beta_zero
 .align 128
 
 
+
+
+
+#
+# SGEMM tester
+#
+#                        RDI,      RSI,      RDX,      XMM0,        XMM1
+# extern void sgemm_test(float* A, float* B, float* C, float alpha, float beta);
+#
 .global sgemm_test
 sgemm_test:
     pushq rbx
@@ -261,97 +309,99 @@ sgemm_test:
     pushq r11
     pushq r12
     pushq r13
-    vmovd r13d, xmm0                            # Save alpha
+    vzeroupper                                  # Clear any split-AVX state
+    vbroadcastss ymm0, xmm0                     # Splat alpha
+    vbroadcastss ymm1, xmm1                     # Splat beta
                                                 # BU PROLOGUE
                                                 #   Matrices:
                                                 #       float A[M=320][K=64] (K-stride:   1)
                                                 #       float B[K=64][N=320] (K-stride: 320)
                                                 # BU PROLOGUE REGISTERS:
-                                                #   R13: alpha
-                                                #   R14: K << 24 | 0000 << 20 | M << 11 | N << 2 | transB << 1 | transA
                                                 #   RDI: &A[m][0]
                                                 #   RSI: &B[0][n]
                                                 #   RDX: &C[m][n]
-    leaq  rcx, [rsi+64]                         # Configure B-slice prefetch pointer
-    leaq  r8,  [rsi+64+1*320*64*4]              # Configure B-slice prefetch stop pointer
-    movq  r9,   rsi                             # Save B-slice pointer
-    movq  r10,  rdi                             # Save A-slice pointer
-    mov   r11,  1000                            # Internal trip count
-    mov   r12,  0x0040
-    leaq  rax, [rip+.Lsgemm_bu_eject_alpha_one_beta_zero]
-    leaq  rbx, [rip+1f]
+    mov   rax,  rdi                             # Install A-pointer
+    mov   rbx,  rsi                             # Install B-pointer
+    mov   rcx,  rdx                             # Install C-pointer
+    mov   rdx,  +1*320*4                        # Place required constant for BU in RDX
+    leaq  r8,  [rax+64*4]                       # Configure A-pointer stop
+    leaq  rdi, [rip+.Lsgemm_bu_eject_alpha_one_beta_zero]
+    leaq  rsi, [rip+1f]
+    xor   r12,  r12
 .align 64
 0:
                                                 # PREFETCH
-    prefetchw  [rdx]                            #   Prefetch C[0][n:n+16] with write intent
-    prefetchw  [rdx+1*320*4]                    #   Prefetch C[1][n:n+16] with write intent
-    prefetchw  [rdx+2*320*4]                    #   Prefetch C[2][n:n+16] with write intent
-    prefetchw  [rdx+3*320*4]                    #   Prefetch C[3][n:n+16] with write intent
-    prefetchw  [rdx+4*320*4]                    #   Prefetch C[4][n:n+16] with write intent
+    prefetchw  [rcx]                            #   Prefetch C[0][n:n+16] with write intent
+    prefetchw  [rcx+1*320*4]                    #   Prefetch C[1][n:n+16] with write intent
+    prefetchw  [rcx+2*320*4]                    #   Prefetch C[2][n:n+16] with write intent
+    prefetchw  [rcx+3*320*4]                    #   Prefetch C[3][n:n+16] with write intent
+    prefetchw  [rcx+4*320*4]                    #   Prefetch C[4][n:n+16] with write intent
     jmp .Lsgemm_bu_core_entry_clr               # EXECUTE BASIC UNIT
 .align 64
 1:                                              # REENTRY FROM BASIC UNIT
-                                                #   (clobbered:      RDI, RSI, RCX)
-                                                #   (need to set:    RDI, RSI, RDX, RCX, R8)
-                                                #   (link registers: RAX, RBX)
-    addq  r12,  0x4040
-    movq  rsi,  r12
-    and   rsi,  0x0100
-    neg   rsi
-    addq  rsi,  64   # {64,64,-192,64,64,64,-192,64,...}
-    addq  r8,   rsi                             # Update  B-slice prefetch stop  pointer
-    leaq  rcx, [r8-1*320*64*4]                  # Restore B-slice prefetch start pointer
-    movq  rsi,  r12
-    shr   rsi,  8
-    and   rsi,  0x100
-    neg   rsi
-    addq  rsi,  64   # {64,64,64,-192,64,64,64,-192,...}
-    addq  rdx,  rsi                             # Update  C-slice pointer
-    addq  r9,   rsi                             # Update  B-slice pointer copy
-    mov   rsi,  r9                              # Restore B-slice pointer
-    mov   rdi,  r10                             # Restore A-slice pointer
-    and   r12,  0x6060                          # Wraparound double counter
-    #mov   rdi,  r10                             # Restore A-slice pointer
-    #mov   rsi,  r9                              # Restore B-slice pointer
-    #leaq  rcx, [rsi+64]
-    decq  r11
-    jne   0b
-    popq  r13
-    popq  r12
-    popq  r11
-    popq  r10
-    popq  rbx
+                                                #   (need to set:    RAX, RBX, RCX, R8)
+                                                #   (link registers: RDI, RSI)
+    mov     r10,  +1*64
+    mov     r11,  -3*64
+    incq    r12
+    testq   r12,   3
+    cmove   r10,   r11
+    leaq    rbx,  [rbx+r10]                     # Advance B-slice pointer
+    leaq    rcx,  [rcx+r10]                     # Advance C-slice pointer likewise
+    mov     r10,   +5*64*4
+    mov     r11,   +0*64*4
+    cmovne  r10,   r11
+    leaq    rax,  [rax+r10]                     # Advance A-slice pointer
+    leaq    r8,   [r8 +r10]                     # Advance A-slice pointer stop
+    mov     r10,  +5*320*4
+    cmovne  r10,   r11
+    leaq    rcx,  [rcx+r10]                     # Advance C-slice pointer likewise
+    testq   r12,   255
+    mov     r10,  -320* 64*4
+    cmovne  r10,   r11
+    leaq    rax,  [rax+r10]
+    leaq    r8,   [r8 +r10]
+    mov     r10,  -320*320*4+64*4
+    cmovne  r10,   r11
+    leaq    rcx,  [rcx+r10]
+    mov     r10,  64*4
+    cmovne  r10,   r11
+    leaq    rbx,  [rbx+r10]
+    cmpq    r12,  1280                          # Internal trip count
+    jl      0b
+    popq    r13
+    popq    r12
+    popq    r11
+    popq    r10
+    popq    rbx
     retq
 
 
 
+.align  64
+.global nabla_cpuid_x86
+nabla_cpuid_x86:
+    mov     r8d,  ecx
+    mov     eax,  esi
+    mov     ecx,  edx
+    mov     rsi,  rbx
+    cpuid
+    test    rdi,  rdi
+    je 0f
+    mov    [rdi+0*4], eax
+    mov    [rdi+1*4], ebx
+    mov    [rdi+2*4], ecx
+    mov    [rdi+3*4], edx
+0:  cmp     r8d,  1
+    cmove   eax,  ebx
+    cmp     r8d,  2
+    cmove   eax,  ecx
+    cmp     r8d,  3
+    cmove   eax,  edx
+    mov     rbx,  rsi
+    retq
 
-#    #
-#    # We've executed one basic unit at C[m:m+5][n:n+16], and must move to the next basic unit.
-#    # There are:
-#    #   - 8x4 basic units (1 subset) in L1 cache
-#    #   - 5x8 subsets (1 set)        in L2 cache
-#    # So there are 5x8x8x4 = 1280 BUs in total in one set. We navigate this coordinate
-#    # system using a single register:
-#    #
-#    #   R12:           SSx : SSy : BUy : BUx
-#    #     (bitwidth):   3     3  +  3     2
-#    #
-#    leaq   rcx,  [rcx+64]   # C[m][n+=16]
-#    leaq   rdx,  [rdx+64]   # B[:][n+=16]
-#    addq   r12,   1
-#    testq  r12,   3
-#    jne    .Lsgemm_nn_bu_prologue
-#    addq   r12,   (1 << (2))
-#    leaq   rcx,  [rcx-4*64]
-#    leaq   rdx,  [rdx-4*64]
-#    leaq   rsi,  [rsi+rax]
-#    testq  r12,   (1 << (  3+3+1+2))
-#    je     .Lsgemm_nn_bu_prologue
-#    leaq   rcx,  [rcx+4*64]
-#    leaq   rdx,  [rdx+4*64]
-#    addq   r12,   (1 << (  3+3+1+2))
-#    cmpq   r12,   (5 << (1+3+3+1+2))
+
 
 
 #.align  64
