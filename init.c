@@ -108,26 +108,35 @@ int main(int argc, char* argv[]){
             level3_type, level3_shift, level3_width, level3_max,
             proctopoeax, proctopoebx,  proctopoecx,  proctopoedx);
 #endif
+#if 0
+    extern int sgemm_mod_count(void);
+    printf("%d\n", sgemm_mod_count());
+#endif
     
-    float A[320][64];
-    float B[64][320];
-    float C[320][320];
-    float* L = mmap(NULL, 4 << 20, /* 4 MiB */
-                    PROT_READ|PROT_WRITE,
-                    MAP_PRIVATE|MAP_ANONYMOUS|MAP_POPULATE,
-                    -1, 0);
-    if(L == MAP_FAILED){
-        fprintf(stderr, "Error mmap()'ing memory!\n");
+    float* L   = NULL;
+    size_t Lsz = 4 << 20; /* 4 MiB */
+    if(posix_memalign((void**)&L, Lsz, Lsz) != 0){
+        fprintf(stderr, "Error posix_memalign()'ing memory!\n");
         return 1;
     }
+    madvise(L, Lsz, MADV_HUGEPAGE);
+    madvise(L, Lsz, MADV_DONTDUMP);
+    madvise(L, Lsz, MADV_UNMERGEABLE);
+    madvise(L, Lsz, MADV_WILLNEED);
+    madvise(L, Lsz, MADV_RANDOM);
+    mlock  (L, Lsz);
     
-    for(i=0;i<320;i++){
+    float (*A)[64]  = (void*)(L + 0);  /* float A[400][ 64]; */
+    float (*B)[400] = (void*)(A + 400);/* float B[ 64][400]; */
+    float (*C)[400] = (void*)(B + 64); /* float C[400][400]; */
+    
+    for(i=0;i<400;i++){
         for(j=0;j<64;j++){
             A[i][j] = 1.0f;    /* A is ones() */
             B[j][i] = (j+i)&63;/* B is circulant(range(64)) */
         }
-        for(j=0;j<320;j++){
-            C[i][j] = 0;       /* C is zeroes() */
+        for(j=0;j<400;j++){
+            C[j][i] = 0;       /* C is zeroes() */
         }
     }
     
@@ -139,15 +148,15 @@ int main(int argc, char* argv[]){
                           float  beta,
                           float* C, ssize_t LDC,
                           float* L);
-    extern void sgemm_test(float* A, float* B, float* C, float alpha, float beta);
+    extern void sgemm_test(float* A, float* B, float* C,
+                           int K0, int counter, int prefetch_counter, float alpha, float beta);
     
     for(i=0;i<10000;i++){
-        /*int ret = sgemm_frag('N', 'N', 320, 320, 64, 1.f, &A[0][0],  64*sizeof(float),
-                                                      &B[0][0], 320*sizeof(float),
-                                           i?1.f:0.f, &C[0][0], 320*sizeof(float), L);
-        if(ret)
-            return ret;*/
-        sgemm_test(L+0, L+320*64, L+2*320*64, 1.0f, 0.0f);
+        sgemm_test(L+0, L+400*64, L+2*400*64,                        /* A, B & C pointers */
+                            32-5<<18 | 32-5<<13 | 16-5<<9 | 16-8<<5, /* K0                */
+                   15<<23 |    4<<18 |    4<<13 |    4<<9,           /* counter           */
+                   15<<23 |    4<<18 |    4<<13 |    4<<9 |    5<<5, /* prefetch counter  */
+                   1.0f, 0.0f);                                      /* alpha & beta      */
     }
     
     return 0;

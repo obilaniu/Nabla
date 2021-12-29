@@ -61,7 +61,9 @@
 #       - L1d  -> L2   Wr BW:        64*20*10*32/409600 =   1.0   B/cc < 32 B/cc
 
 
-
+##
+##                   SYSTEM V X86-64 CALLING CONVENTION
+##
 ## The calling convention of the System V AMD64 ABI is followed on Solaris, Linux,
 ## FreeBSD, macOS, and is the de facto standard among Unix and Unix-like operating
 ## systems. The OpenVMS Calling Standard on x86-64 is based on the System V ABI
@@ -75,11 +77,11 @@
 ## Floating-point return values are similarly stored in XMM0 and XMM1. The wider
 ## YMM and ZMM registers are used for passing and returning wider values in place
 ## of XMM when they exist.
-
+##
 ## If the callee wishes to use registers RBX, RSP, RBP, and R12–R15, it must
 ## restore their original values before returning control to the caller. All other
 ## registers must be saved by the caller if it wishes to preserve their values.
-
+##
 ## For leaf-node functions (functions which do not call any other function(s)), a
 ## 128-byte space is stored just beneath the stack pointer of the function. The
 ## space is called the red zone. This zone will not be clobbered by any signal or
@@ -88,27 +90,97 @@
 ## of RSP, RBP) by utilizing this zone. However, other functions may clobber this
 ## zone. Therefore, this zone should only be used for leaf-node functions. gcc and
 ## clang offer the -mno-red-zone flag to disable red-zone optimizations.
-
+##
 ## If the callee is a variadic function, then the number of floating point
 ## arguments passed to the function in vector registers must be provided by the
 ## caller in the AL register.
-
+##
 ## Unlike the Microsoft calling convention, a shadow space is not provided; on
 ## function entry, the return address is adjacent to the seventh integer argument
 ## on the stack.
+##
+
 
 .intel_syntax noprefix
-
-
-
-.section .rodata
-.align 64
-.Lvectormask10:
-.int -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0
-
-
-
 .text
+
+#define K1     0b0000010000100001000100010000
+#define KMmask 0b0111100000111110000000000000
+#define KNmask 0b0000011111000001111000000000
+#define KKmask 0b0000000000000000000111100000
+#define KMmixm (25<<0|5<<10)
+#define KNmixm ((5<<0|1<<9)<<5)
+#define KMshft 23
+#define KNshft 19
+
+
+#
+# Nabla CPUID Access Function
+#
+#      uint32_t nabla_cpuid_x86(uint32_t buf[4], uint32_t ECX, uint32_t EAX, int select)
+#
+# Executes CPUID with register values ECX:EAX and writes result into buf if non-NULL.
+# The return value is one selected register from CPUID's output:
+#     EAX=0    EBX=1    ECX=2    EDX=3
+#
+.align  64
+.global nabla_cpuid_x86
+nabla_cpuid_x86:
+    mov     r8d,  ecx
+    mov     eax,  esi
+    mov     ecx,  edx
+    mov     rsi,  rbx
+    cpuid
+    test    rdi,  rdi
+    je 0f
+    mov    [rdi+0*4], eax
+    mov    [rdi+1*4], ebx
+    mov    [rdi+2*4], ecx
+    mov    [rdi+3*4], edx
+0:  cmp     r8d,  1
+    cmove   eax,  ebx
+    cmp     r8d,  2
+    cmove   eax,  ecx
+    cmp     r8d,  3
+    cmove   eax,  edx
+    mov     rbx,  rsi
+    retq
+
+
+#
+# SGEMM Modulo-Decrement Test Function
+#
+# Coordinate System:
+#     Name:                 Mb : Nb : Ma : Na : k8 : 00000
+#     Max:                  15    4    4    4    7   0
+#     Bits:                  5    5    5    4    4   5
+#     Offset:               23   18   13    9    5   0
+#
+.global sgemm_mod_count
+sgemm_mod_count:
+    mov     edi,   0b11011110111011100000000
+    mov     edx,   (15<<23|4<<18|4<<13|4<<9|7<<5)|16
+    xor     eax,   eax
+0:
+    # Independent count of iterations
+    inc     eax
+    
+    # Modulo-bump
+    sub     edx,   32
+    mov     ecx,   edx
+    and     ecx,   0b10000100001000100010000
+    lzcnt   ecx,   ecx
+    mov     esi,   edi
+    shl     esi,   cl
+    shr     esi,   cl
+    xor     edx,   esi
+    
+    # Compare and exit.
+    test    edx,   edx
+    jge     0b
+    ret
+
+
 #
 # SGEMM Basic Unit Kernel
 #
@@ -299,106 +371,69 @@ sgemm_bu_core_entry:          # Purely for debug information, DO NOT CALL DIRECT
 #
 # SGEMM tester
 #
-#                        RDI,      RSI,      RDX,      XMM0,        XMM1
-# extern void sgemm_test(float* A, float* B, float* C, float alpha, float beta);
+#                        RDI,      RSI,      RDX,      RCX,    R8,          R9,                   XMM0,        XMM1
+# extern void sgemm_test(float* A, float* B, float* C, int K0, int counter, int prefetch_counter, float alpha, float beta);
 #
 .global sgemm_test
 sgemm_test:
-    pushq rbx
-    pushq r10
-    pushq r11
-    pushq r12
-    pushq r13
-    vzeroupper                                  # Clear any split-AVX state
-    vbroadcastss ymm0, xmm0                     # Splat alpha
-    vbroadcastss ymm1, xmm1                     # Splat beta
-                                                # BU PROLOGUE
-                                                #   Matrices:
-                                                #       float A[M=320][K=64] (K-stride:   1)
-                                                #       float B[K=64][N=320] (K-stride: 320)
-                                                # BU PROLOGUE REGISTERS:
-                                                #   RDI: &A[m][0]
-                                                #   RSI: &B[0][n]
-                                                #   RDX: &C[m][n]
-    mov   rax,  rdi                             # Install A-pointer
-    mov   rbx,  rsi                             # Install B-pointer
-    mov   rcx,  rdx                             # Install C-pointer
-    mov   rdx,  +1*320*4                        # Place required constant for BU in RDX
-    leaq  r8,  [rax+64*4]                       # Configure A-pointer stop
-    leaq  rdi, [rip+.Lsgemm_bu_eject_alpha_one_beta_zero]
-    leaq  rsi, [rip+1f]
-    xor   r12,  r12
-.align 64
-0:
-                                                # PREFETCH
-    prefetchw  [rcx]                            #   Prefetch C[0][n:n+16] with write intent
-    prefetchw  [rcx+1*320*4]                    #   Prefetch C[1][n:n+16] with write intent
-    prefetchw  [rcx+2*320*4]                    #   Prefetch C[2][n:n+16] with write intent
-    prefetchw  [rcx+3*320*4]                    #   Prefetch C[3][n:n+16] with write intent
-    prefetchw  [rcx+4*320*4]                    #   Prefetch C[4][n:n+16] with write intent
-    jmp .Lsgemm_bu_core_entry_clr               # EXECUTE BASIC UNIT
-.align 64
-1:                                              # REENTRY FROM BASIC UNIT
-                                                #   (need to set:    RAX, RBX, RCX, R8)
-                                                #   (link registers: RDI, RSI)
-    mov     r10,  +1*64
-    mov     r11,  -3*64
-    incq    r12
-    testq   r12,   3
-    cmove   r10,   r11
-    leaq    rbx,  [rbx+r10]                     # Advance B-slice pointer
-    leaq    rcx,  [rcx+r10]                     # Advance C-slice pointer likewise
-    mov     r10,   +5*64*4
-    mov     r11,   +0*64*4
-    cmovne  r10,   r11
-    leaq    rax,  [rax+r10]                     # Advance A-slice pointer
-    leaq    r8,   [r8 +r10]                     # Advance A-slice pointer stop
-    mov     r10,  +5*320*4
-    cmovne  r10,   r11
-    leaq    rcx,  [rcx+r10]                     # Advance C-slice pointer likewise
-    testq   r12,   255
-    mov     r10,  -320* 64*4
-    cmovne  r10,   r11
-    leaq    rax,  [rax+r10]
-    leaq    r8,   [r8 +r10]
-    mov     r10,  -320*320*4+64*4
-    cmovne  r10,   r11
-    leaq    rcx,  [rcx+r10]
-    mov     r10,  64*4
-    cmovne  r10,   r11
-    leaq    rbx,  [rbx+r10]
-    cmpq    r12,  1280                          # Internal trip count
-    jl      0b
-    popq    r13
-    popq    r12
-    popq    r11
-    popq    r10
-    popq    rbx
-    retq
-
-
-
-.align  64
-.global nabla_cpuid_x86
-nabla_cpuid_x86:
-    mov     r8d,  ecx
-    mov     eax,  esi
-    mov     ecx,  edx
-    mov     rsi,  rbx
-    cpuid
-    test    rdi,  rdi
-    je 0f
-    mov    [rdi+0*4], eax
-    mov    [rdi+1*4], ebx
-    mov    [rdi+2*4], ecx
-    mov    [rdi+3*4], edx
-0:  cmp     r8d,  1
-    cmove   eax,  ebx
-    cmp     r8d,  2
-    cmove   eax,  ecx
-    cmp     r8d,  3
-    cmove   eax,  edx
-    mov     rbx,  rsi
+    pushq        rbx
+    pushq        r10
+    pushq        r11
+    pushq        r12
+    pushq        r13
+    pushq        r14
+    pushq        r15
+    vzeroupper                                           # Clear any split-AVX state
+    vbroadcastss ymm0,   xmm0                            # Splat alpha
+    vbroadcastss ymm1,   xmm1                            # Splat beta
+    and          r8d,   -512                             # Ensure correctness of counter
+    or           r8d,    16                              # Ensure correctness of counter
+    or           r9d,    16                              # Ensure correctness of prefetch counter
+    #or           ecx,    16                              # Ensure correctness of K0 control constant
+    mov          r12d,   ecx                             # Install R12 = K0 control constant
+    not          ecx
+    and          ecx,    0b011100000
+    or           r8d,    ecx                             # Copy ~k from K0 into counter
+    mov          r13,    rdi                             # Install R13 = A-base-pointer
+    mov          r14,    rsi                             # Install R14 = B-base-pointer
+    mov          r15,    rdx                             # Install R15 = C-base-pointer
+    
+    mov          eax,    r8d                             # = CURRENT COUNTER
+    and          eax,            KMmask
+    imul         eax,    eax,    KMmixm
+    shr          eax,            KMshft                  # = m
+    shl          eax,    8                               # = m*64*sizeof(float)
+    addq         rax,    r13                             # = &A[m,0]
+    
+    mov          ebx,    r8d                             # = CURRENT COUNTER
+    and          ebx,            KNmask
+    imul         ebx,    ebx,    KNmixm
+    shr          ebx,            KNshft                  # = n
+    shl          ebx,    2                               # = n*sizeof(float)
+    addq         rbx,    r14                             # = &B[0,n]
+    
+    leaq         r10,   [rip+0f]                         # Install return pointer
+    vxorps       ymm6,   ymm6,   ymm6
+    vxorps       ymm7,   ymm7,   ymm7
+    vxorps       ymm8,   ymm8,   ymm8
+    vxorps       ymm9,   ymm9,   ymm9
+    vxorps       ymm10,  ymm10,  ymm10
+    vxorps       ymm11,  ymm11,  ymm11
+    vxorps       ymm12,  ymm12,  ymm12
+    vxorps       ymm13,  ymm13,  ymm13
+    vxorps       ymm14,  ymm14,  ymm14
+    vxorps       ymm15,  ymm15,  ymm15
+    sfence
+    jmp .Lsgemm_zen2_bu_core_8x_unroll_accumulate        # EXECUTE
+0:  sfence
+    vzeroall
+    popq         r15
+    popq         r14
+    popq         r13
+    popq         r12
+    popq         r11
+    popq         r10
+    popq         rbx
     retq
 
 
@@ -524,3 +559,373 @@ nabla_cpuid_x86:
 #                         #      r13:    beta << 32 | alpha
 #                         #      r12:    
 #    vzeroall                                    #   Reinitialize entire vector register set.
+
+
+#
+# SGEMM, Idea 3
+#
+#     A[M=400][K= 64]
+#     B[K= 64][N=400]
+#     C[M=400][N=400]
+#
+# 8x (
+#      1x PREFETCHT0 (B)
+#      7x LD
+#     10x FMA
+# )
+# 5x PREFETCHT0 (A)
+# 5x PREFETCHW  (C)
+# 1 TEST+BR
+#
+# Blocks:          M=5, N=16
+# Time:            40cc/iteration
+# Memory accesses: 8 full cachelines of B
+#                  5 half cachelines of A
+#                  5 full cachelines of C
+#
+# Jump Schedule:
+#  1.  5x:           N +=  16
+#  2.  5x:  M +=  5, N -=  80
+#  3.  5x:  M -= 25, N +=  80
+#  4. 16x:  M += 25, N -= 400
+
+
+#
+# SGEMM Basic Unit Kernel, 8x unrolled.
+#
+# The SGEMM basic unit is a matrix multiplication of C(5,16) += A(5xK) x B(Kx16)
+# sliced out of C(400x400) += A(400xK) x B(Kx400) matrix tiles. There are 2000
+# basic units per tile operation. K is divisible by the unroll factor 8 such
+# that 8 <= K <= 64.
+#
+# An SGEMM basic unit executes K sets of 10 FMAs.
+#
+.align 4096
+.globl sgemm_zen2_bu_core_8x_unroll_accumulate
+sgemm_zen2_bu_core_8x_unroll_accumulate:
+.Lsgemm_zen2_bu_core_8x_unroll_accumulate:      #************ BU CORE 8X UNROLL ************
+    #
+    #   MAIN ARITHMETIC BODY
+    #
+    # K=0
+    vmovaps      ymm5,  [rbx+0*400*4+32]        #     Load B[k+0, n+8:n+16]
+    vmovaps      ymm4,  [rbx+0*400*4]           #     Load B[k+0, n  :n+ 8]
+    vbroadcastss ymm3,  [rax+0*4+1*64*4]        #     Load A[m+1, k+0]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+0] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+0] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4]               #     Load A[m+0, k+0]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+0] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+0] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+3*64*4]        #     Load A[m+3, k+0]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+0] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+0] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+2*64*4]        #     Load A[m+2, k+0]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+0] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+0] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+4*64*4]        #     Load A[m+4, k+0]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+0] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+0] * B[k,n+8:n+16]
+.Lsgemm_zen2_bu_core_8x_unroll_skip_first_iter:
+    # K=5
+    vmovaps      ymm4,  [rbx+5*400*4]           #     Load B[k+5, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+5*400*4+32]        #     Load B[k+5, n+8:n+16]
+    vbroadcastss ymm3,  [rax+5*4+1*64*4]        #     Load A[m+1, k+5]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+5] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+5] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+5*4]               #     Load A[m+0, k+5]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+5] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+5] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+5*4+3*64*4]        #     Load A[m+3, k+5]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+5] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+5] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+5*4+2*64*4]        #     Load A[m+2, k+5]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+5] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+5] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+5*4+4*64*4]        #     Load A[m+4, k+5]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+5] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+5] * B[k,n+8:n+16]
+    # K=2
+    vmovaps      ymm5,  [rbx+2*400*4+32]        #     Load B[k+2, n+8:n+16]
+    vmovaps      ymm4,  [rbx+2*400*4]           #     Load B[k+2, n  :n+ 8]
+    vbroadcastss ymm3,  [rax+2*4+1*64*4]        #     Load A[m+1, k+2]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+2] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+2] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+2*4]               #     Load A[m+0, k+2]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+2] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+2] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+2*4+3*64*4]        #     Load A[m+3, k+2]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+2] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+2] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+2*4+2*64*4]        #     Load A[m+2, k+2]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+2] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+2] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+2*4+4*64*4]        #     Load A[m+4, k+2]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+2] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+2] * B[k,n+8:n+16]
+    # K=7
+    vmovaps      ymm4,  [rbx+7*400*4]           #     Load B[k+7, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+7*400*4+32]        #     Load B[k+7, n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+1*64*4]        #     Load A[m+1, k+7]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+7] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+7] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4]               #     Load A[m+0, k+7]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+7] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+7] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+3*64*4]        #     Load A[m+3, k+7]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+7] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+7] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+2*64*4]        #     Load A[m+2, k+7]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+7] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+7] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+4*64*4]        #     Load A[m+4, k+7]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+7] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+7] * B[k,n+8:n+16]
+    # K=1
+    vmovaps      ymm5,  [rbx+1*400*4+32]        #     Load B[k+1, n+8:n+16]
+    vmovaps      ymm4,  [rbx+1*400*4]           #     Load B[k+1, n  :n+ 8]
+    vbroadcastss ymm3,  [rax+1*4+1*64*4]        #     Load A[m+1, k+1]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+1] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+1] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*4]               #     Load A[m+0, k+1]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+1] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+1] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*4+3*64*4]        #     Load A[m+3, k+1]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+1] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+1] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*4+2*64*4]        #     Load A[m+2, k+1]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+1] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+1] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*4+4*64*4]        #     Load A[m+4, k+1]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+1] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+1] * B[k,n+8:n+16]
+    # K=6
+    vmovaps      ymm4,  [rbx+6*400*4]           #     Load B[k+6, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+6*400*4+32]        #     Load B[k+6, n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+1*64*4]        #     Load A[m+1, k+6]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+6] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+6] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4]               #     Load A[m+0, k+6]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+6] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+6] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+3*64*4]        #     Load A[m+3, k+6]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+6] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+6] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+2*64*4]        #     Load A[m+2, k+6]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+6] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+6] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+4*64*4]        #     Load A[m+4, k+6]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+6] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+6] * B[k,n+8:n+16]
+    # K=3
+    vmovaps      ymm5,  [rbx+3*400*4+32]        #     Load B[k+3, n+8:n+16]
+    vmovaps      ymm4,  [rbx+3*400*4]           #     Load B[k+3, n  :n+ 8]
+    vbroadcastss ymm3,  [rax+3*4+1*64*4]        #     Load A[m+1, k+3]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+3] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+3] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*4]               #     Load A[m+0, k+3]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+3] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+3] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*4+3*64*4]        #     Load A[m+3, k+3]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+3] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+3] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*4+2*64*4]        #     Load A[m+2, k+3]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+3] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+3] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*4+4*64*4]        #     Load A[m+4, k+3]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+3] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+3] * B[k,n+8:n+16]
+    # K=4
+    vmovaps      ymm4,  [rbx+4*400*4]           #     Load B[k+4, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+4*400*4+32]        #     Load B[k+4, n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*4+1*64*4]        #     Load A[m+1, k+4]
+    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+4] * B[k,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+4] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*4]               #     Load A[m+0, k+4]
+    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+4] * B[k,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+4] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*4+3*64*4]        #     Load A[m+3, k+4]
+    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+4] * B[k,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+4] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*4+2*64*4]        #     Load A[m+2, k+4]
+    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+4] * B[k,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+4] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*4+4*64*4]        #     Load A[m+4, k+4]
+    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+4] * B[k,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+4] * B[k,n+8:n+16]
+    
+    #
+    #   POINTER A & B BUMPS
+    #
+    addq         rax,    8*4                    #     A[m, k+=8]
+    addq         rbx,    8*400*4                #     B[k+=8, n]
+
+#if 1
+    #
+    #   PREFETCH MODULO COUNTER (R9) DECREMENT &
+    #   PREFETCH ADDRESS COMPUTATION &
+    #   PREFETCH DATA
+    #
+    # I: R9, R12, R13, R14, R15
+    # O: R9
+    # Registers available:   RCX, RDX, RDI, RSI, R10, R11
+    # Registers unavailable: RAX, RBX, R8
+    #
+    # A-prefetch-pointer (float A[M=400][K= 64])
+    # B-prefetch-pointer (float B[K= 64][N=400])
+    # C-prefetch-pointer (float C[M=400][N=400])
+    #
+    # Coordinate System:
+    #     Name:                 mb : nb : ma : na : k8 : 10000
+    #     Max:                  15    4    4    4    7   16
+    #     Bits:                  5    5    5    4    4   5
+    #     Offset:               23   18   13    9    5   0
+    #
+    sub          r9d,    32                     # [PREFETCH COUNTER]
+    mov          ecx,    r9d                    # [PREFETCH COUNTER]
+    and          ecx,    K1                     # [PREFETCH COUNTER]
+    lzcnt        ecx,    ecx                    # [PREFETCH COUNTER]
+    mov          esi,    r12d                   # [PREFETCH COUNTER]
+    shl          esi,    cl                     # [PREFETCH COUNTER]
+    shr          esi,    cl                     # [PREFETCH COUNTER]
+    xor          r9d,    esi                    # [PREFETCH COUNTER]
+    
+    mov          ecx,    r9d                    # = PREFETCH COUNTER
+    and          ecx,           KMmask
+    imul         ecx,    ecx,   KMmixm
+    shr          ecx,           KMshft          # = m
+    imul         edx,    ecx,   400*4           # = m*400*sizeof(float)
+    shl          ecx,    8                      # = m* 64*sizeof(float)
+    addq         rdx,    r15                    # = &C[m,0]
+    
+    mov          esi,    r12d                   # =  K0 CONSTANT
+    neg          esi                            # = -K0
+    sub          esi,    r9d                    # = -K0 - PREFETCH COUNTER
+    and          esi,           KKmask          # = k*sizeof(float)
+    imul         edi,    esi,   400             # = k*400*sizeof(float)
+    add          esi,    ecx                    # = (m*64 + k)*sizeof(float)
+    add          rdi,    r14                    # = &B[k,0]
+    
+    prefetcht0  [r13 + rsi + 1*64*4]            # Prefetch A[m+1,k:k+8]
+    prefetcht0  [r13 + rsi + 0*64*4]            # Prefetch A[m,  k:k+8]
+    prefetcht0  [r13 + rsi + 3*64*4]            # Prefetch A[m+3,k:k+8]
+    prefetcht0  [r13 + rsi + 2*64*4]            # Prefetch A[m+2,k:k+8]
+    prefetcht0  [r13 + rsi + 4*64*4]            # Prefetch A[m+4,k:k+8]
+    
+    mov          ecx,    r9d                    # = PREFETCH COUNTER
+    and          ecx,           KNmask
+    imul         ecx,    ecx,   KNmixm
+    shr          ecx,           KNshft          # = n
+    
+    prefetchw   [rdx + rcx*4 + 1*400*4]         # Prefetch C[m+1,n:n+16]
+    prefetchw   [rdx + rcx*4 + 0*400*4]         # Prefetch C[m+0,n:n+16]
+    prefetchw   [rdx + rcx*4 + 3*400*4]         # Prefetch C[m+3,n:n+16]
+    prefetchw   [rdx + rcx*4 + 2*400*4]         # Prefetch C[m+2,n:n+16]
+    prefetchw   [rdx + rcx*4 + 4*400*4]         # Prefetch C[m+4,n:n+16]
+    prefetcht0  [rdi + rcx*4 + 0*400*4]         # Prefetch B[k+0,n:n+16]
+    prefetcht0  [rdi + rcx*4 + 5*400*4]         # Prefetch B[k+5,n:n+16]
+    prefetcht0  [rdi + rcx*4 + 2*400*4]         # Prefetch B[k+2,n:n+16]
+    prefetcht0  [rdi + rcx*4 + 7*400*4]         # Prefetch B[k+7,n:n+16]
+    prefetcht0  [rdi + rcx*4 + 1*400*4]         # Prefetch B[k+1,n:n+16]
+    prefetcht0  [rdi + rcx*4 + 6*400*4]         # Prefetch B[k+6,n:n+16]
+    prefetcht0  [rdi + rcx*4 + 3*400*4]         # Prefetch B[k+3,n:n+16]
+    prefetcht0  [rdi + rcx*4 + 4*400*4]         # Prefetch B[k+4,n:n+16]
+#endif
+    
+    #
+    #   CURRENT POINTER C COMPUTATION &
+    #   CURRENT MODULO COUNTER (R8) DECREMENT &
+    #   CURRENT/NEXT POINTER A & B COMPUTATION
+    #
+    # I: R8, R12, R13, R14, R15
+    # O: R8, RCX, RDX, RDI, RSI
+    # Registers available:   RCX, RDX, RDI, RSI, R10, R11
+    # Registers unavailable: RAX, RBX, R9
+    #
+    # A-current-pointer (float A[M=400][K= 64])
+    # B-current-pointer (float B[K= 64][N=400])
+    # C-current-pointer (float C[M=400][N=400])
+    #
+    # Coordinate System:
+    #     Name:                 mb : nb : ma : na : k8 : 10000
+    #     Max:                  15    4    4    4    7   16
+    #     Bits:                  5    5    5    4    4   5
+    #     Offset:               23   18   13    9    5   0
+    #
+    mov          edx,    r8d                    # = CURRENT COUNTER
+    and          edx,           KMmask
+    imul         edx,    edx,   KMmixm
+    shr          edx,           KMshft          # = m
+    imul         edx,    edx,   400*4           # = m*400*sizeof(float)
+    addq         rdx,    r15                    # = &C[m,0]
+    
+    mov          ecx,    r8d                    # = CURRENT COUNTER
+    and          ecx,           KNmask
+    imul         ecx,    ecx,   KNmixm
+    shr          ecx,           KNshft          # = n
+    leaq         rdx,   [rdx+rcx*4]             # = &C[m,n]
+    
+    mov          edi,    r8d                    # [CURRENT COUNTER SAVE]
+    sub          r8d,    32                     # [CURRENT COUNTER]
+    mov          ecx,    r8d                    # [CURRENT COUNTER]
+    and          ecx,    K1                     # [CURRENT COUNTER]
+    lzcnt        ecx,    ecx                    # [CURRENT COUNTER]
+    mov          esi,    r12d                   # [CURRENT COUNTER]
+    shl          esi,    cl                     # [CURRENT COUNTER]
+    shr          esi,    cl                     # [CURRENT COUNTER]
+    xor          r8d,    esi                    # [CURRENT COUNTER BECOMES NEXT]
+    
+    mov          esi,    r8d                    # = NEXT COUNTER
+    and          esi,           KMmask
+    imul         esi,    esi,   KMmixm
+    shr          esi,           KMshft          # = m
+    shl          esi,    8                      # = m*64*sizeof(float)
+    
+    mov          ecx,    r8d                    # = NEXT COUNTER
+    and          ecx,           KNmask
+    imul         ecx,    ecx,   KNmixm
+    shr          ecx,           KNshft          # = n
+    shl          ecx,    2                      # = n*sizeof(float)
+    
+    #
+    # Loop exit test
+    #
+    test         edi,    0b011100000            # Exit if old_k == 0
+    jne .Lsgemm_zen2_bu_core_8x_unroll_accumulate
+    leaq         rax,   [r13+rsi]               # Install A-pointer
+    leaq         rbx,   [r14+rcx]               # Install B-pointer
+    
+    #
+    # Eject accumulators and reload.
+    #
+    vmovaps     [rdx+1*320*4],    ymm8          # C[1][n:n+8]
+    vmovaps     [rdx+1*320*4+32], ymm9          # C[1][n+8:n+16]
+    vmovaps     [rdx],            ymm6          # C[0][n:n+8]
+    vmovaps     [rdx+32],         ymm7          # C[0][n+8:n+16]
+    vmovaps     [rdx+3*320*4],    ymm12         # C[3][n:n+8]
+    vmovaps     [rdx+3*320*4+32], ymm13         # C[3][n+8:n+16]
+    vmovaps     [rdx+2*320*4],    ymm10         # C[2][n:n+8]
+    vmovaps     [rdx+2*320*4+32], ymm11         # C[2][n+8:n+16]
+    vmovaps     [rdx+4*320*4],    ymm14         # C[4][n:n+8]
+    vmovaps     [rdx+4*320*4+32], ymm15         # C[4][n+8:n+16]
+    
+    vmovaps      ymm4,  [rbx+0*400*4]           #     Load B[k+0, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+0*400*4+32]        #     Load B[k+0, n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+1*64*4]        #     Load A[m+1, k+0]
+    vmulps       ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+0] * B[k,n:n+8]
+    vmulps       ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+0] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4]               #     Load A[m+0, k+0]
+    vmulps       ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+0] * B[k,n:n+8]
+    vmulps       ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+0] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+3*64*4]        #     Load A[m+3, k+0]
+    vmulps       ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+0] * B[k,n:n+8]
+    vmulps       ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+0] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+2*64*4]        #     Load A[m+2, k+0]
+    vmulps       ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+0] * B[k,n:n+8]
+    vmulps       ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+0] * B[k,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+4*64*4]        #     Load A[m+4, k+0]
+    vmulps       ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+0] * B[k,n:n+8]
+    vmulps       ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+0] * B[k,n+8:n+16]
+    
+    test         r8d,    r8d                    # Test if countdown register >= 0
+    jge .Lsgemm_zen2_bu_core_8x_unroll_skip_first_iter
+    jmp          r10
