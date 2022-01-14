@@ -18,13 +18,236 @@
 
 
 
-/* Static Assert */
-_Static_assert(sizeof(pthread_mutex_t) <= CL_SIZE, "pthread mutex larger than a cacheline!");
+/* Data Structure Declaration */
+typedef struct nabla_cpuid_generic_t       nabla_cpuid_t;
+typedef struct nabla_cpuid_generic_t       nabla_cpuid_generic_t;
+typedef struct nabla_cpuid_0000000b_t      nabla_cpuid_0000000b_t;
+typedef struct nabla_cpuid_80000001_amd_t  nabla_cpuid_80000001_amd_t;
+typedef struct nabla_cpuid_80000008_amd_t  nabla_cpuid_80000008_amd_t;
+typedef struct nabla_cpuid_8000001d_amd_t  nabla_cpuid_8000001d_amd_t;
+typedef struct nabla_cpuid_8000001e_amd_t  nabla_cpuid_8000001e_amd_t;
+struct nabla_cpuid_generic_t{
+    uint32_t eax, ebx, ecx, edx;
+};
+struct nabla_cpuid_0000000b_t{
+    /* EAX */
+    uint32_t next_level_shift  :  5;
+    uint32_t _pad0             : 27;
+    /* EBX */
+    uint32_t logical_proc_count: 16;
+    uint32_t _pad1             : 16;
+    /* ECX */
+    uint32_t input             :  8;
+    uint32_t level_type        :  8;/* 00h: Invalid, 01h: Thread, 02h: Processor */
+    uint32_t _pad2             : 16;
+    /* EDX */
+    uint32_t ext_apic_id;
+};
+struct nabla_cpuid_80000001_amd_t{
+    /* EAX */
+    uint32_t stepping          :  4;
+    uint32_t base_model        :  4;
+    uint32_t base_family       :  4;
+    uint32_t _pad0             :  4;
+    uint32_t ext_model         :  4;
+    uint32_t ext_family        :  8;
+    uint32_t _pad1             :  4;
+    /* EBX */
+    uint32_t brand_id          : 16;
+    uint32_t _pad2             : 12;
+    uint32_t pkg_type          :  4;
+    /* ECX */
+    uint32_t lahf_lm           :  1; /* LAHF/SAHF in long mode */
+    uint32_t cmp_legacy        :  1; /* Core multi-processing legacy */
+    uint32_t svm               :  1;
+    uint32_t extapic           :  1;
+    uint32_t cr8_legacy        :  1; /*  4 */
+    uint32_t abm               :  1;
+    uint32_t sse4a             :  1;
+    uint32_t misalignsse       :  1;
+    uint32_t threednowprefetch :  1; /* PREFETCH[W] instructions */
+    uint32_t osvw              :  1;
+    uint32_t ibs               :  1;
+    uint32_t xop               :  1;
+    uint32_t skinit            :  1; /* 12 */
+    uint32_t wdt               :  1;
+    uint32_t _pad3             :  1;
+    uint32_t lwp               :  1;
+    uint32_t fma4              :  1; /* 16 */
+    uint32_t tce               :  1;
+    uint32_t cvt16             :  1;
+    uint32_t nodeid_msr        :  1;
+    uint32_t _pad4             :  1; /* 20 */
+    uint32_t tbm               :  1;
+    uint32_t topoext           :  1; /* 22 */
+    uint32_t perfctr_core      :  1;
+    uint32_t perfctr_nb        :  1; /* 24 */
+    uint32_t _pad5             :  1;
+    uint32_t bpext             :  1;
+    uint32_t perftsc           :  1;
+    uint32_t perfctr_llc       :  1; /* 28 */
+    uint32_t mwaitx            :  1;
+    uint32_t addr_mask_extn    :  1;
+    uint32_t _pad6             :  1;
+    /* EDX */
+    uint32_t fpu               :  1; /* x87 FPU */
+    uint32_t vme               :  1; /* Virtual Mode Extensions */
+    uint32_t de                :  1; /* Debug Extensions */
+    uint32_t pse               :  1; /* Page Size Extension */
+    uint32_t tsc               :  1; /* Time Stamp Counter */
+    uint32_t msr               :  1; /* Model Specific Register */
+    uint32_t pae               :  1; /* Physical Address Extension */
+    uint32_t mce               :  1; /* Machine Check Exception */
+    uint32_t cx8               :  1; /* CMPXCHG8B */
+    uint32_t apic              :  1; /* Advanced Programmable Interrupt Controller exists and enabled */
+    uint32_t _pad7             :  1;
+    uint32_t sep               :  1; /* SYSENTER/SYSEXIT */
+    uint32_t mtrr              :  1; /* 12 */
+    uint32_t pge               :  1;
+    uint32_t mca               :  1;
+    uint32_t cmov              :  1;
+    uint32_t pat               :  1; /* 16 */
+    uint32_t pse36             :  1;
+    uint32_t _pad8             :  2;
+    uint32_t nx                :  1; /* 20 */
+    uint32_t _pad9             :  1;
+    uint32_t mmxext            :  1;
+    uint32_t mmx               :  1;
+    uint32_t fxsr              :  1; /* 24 */
+    uint32_t fxsr_opt          :  1;
+    uint32_t pdpe1gb           :  1; /* 1GB pages */
+    uint32_t rdtscp            :  1;
+    uint32_t _pad10            :  1; /* 28 */
+    uint32_t lm                :  1; /* Long Mode */
+    uint32_t threednowext      :  1; /* 3DNow! Extensions */
+    uint32_t threednow         :  1; /* 3DNow! */
+};
+struct nabla_cpuid_80000008_amd_t{
+    /* EAX */
+    uint32_t phys_addr_size         :  8;
+    uint32_t lin_addr_size          :  8;
+    uint32_t guest_phys_addr_size   :  8;
+    uint32_t _pad0                  :  8;
+    /* EBX */
+    uint32_t clzero                 :  1;/* Clear Zero Instruction */
+    uint32_t irperf                 :  1;/* Instructions Retired Count support */
+    uint32_t xsaveerptr             :  1;
+    uint32_t _pad1                  :  1;
+    uint32_t rdpru                  :  1;/* Read APERF/MPERF at user level */
+    uint32_t _pad2                  :  1;
+    uint32_t mbe                    :  1;/* Memory Bandwidth Enforcement */
+    uint32_t _pad3                  :  1;
+    uint32_t mcommit                :  1;
+    uint32_t wbnoinvd               :  1;
+    uint32_t _pad4                  :  2;
+    uint32_t ibpb                   :  1;/* Indirect Branch Prediction Barrier */
+    uint32_t int_wbinvd             :  1;/* Interruptible WBINVD/WBNOINVD */
+    uint32_t ibrs                   :  1;/* Indirect Branch Restricted Speculation */
+    uint32_t stibp                  :  1;/* Single Thread Indirect Branch Prediction */
+    uint32_t _pad5                  :  1;/* 16 */
+    uint32_t stibp_always_on        :  1;/* STIBP Always On */
+    uint32_t ibrs_preferred         :  1;/* IBRS Preferred */
+    uint32_t ibrs_same_mode_prot    :  1;/* IBRS provides Same Mode Protection */
+    uint32_t efer_lmsle_unsupported :  1;/* Long Mode Segment Limit Enable check is not supported */
+    uint32_t _pad6                  :  2;/* 21-22 */
+    uint32_t ppin                   :  1;/* Protected Processor Inventory Number */
+    uint32_t ssbd                   :  1;/* Speculative Store Bypass Disable */
+    uint32_t _pad7                  :  2;/* 25-26 */
+    uint32_t cppc                   :  1;/* Collaborative Processor Performance Control */
+    uint32_t psfd                   :  1;/* Predictive Store Forward Disable */
+    uint32_t _pad8                  :  3;/* 29-31 */
+    /* ECX */
+    uint32_t nc                     :  8;/* Number of Threads in Package. Biased - 1 */
+    uint32_t _pad9                  :  4;
+    uint32_t apic_id_size           :  4;
+    uint32_t perf_tsc_size          :  2;
+    uint32_t _pad10                 : 14;
+    /* EDX */
+    uint32_t _pad11                 : 16;
+    uint32_t rdpru_max              :  8;/* Maximum input in ECX to RDPRU instruction. */
+    uint32_t _pad12                 :  8;
+};
+struct nabla_cpuid_8000001d_amd_t{
+    /* EAX */
+    uint32_t type        :  5;
+    uint32_t level       :  3;
+    uint32_t self_init   :  1;
+    uint32_t fully_assoc :  1;
+    uint32_t _pad0       :  4;
+    uint32_t num_sharing : 12;
+    uint32_t _pad1       :  6;
+    /* EBX */
+    uint32_t L           : 12;/* Cache Line Size,             biased - 1 */
+    uint32_t P           : 10;/* Cache Physical Partitions,   biased - 1 */
+    uint32_t W           : 10;/* Cache Ways of Associativity, biased - 1 */
+    /* ECX */
+    uint32_t S;               /* Cache Sets,                  biased - 1 */
+    /* EDX */
+    uint32_t wbinvd      :  1;
+    uint32_t inclusive   :  1;
+    uint32_t _pad2       : 30;
+};
+struct nabla_cpuid_8000001e_amd_t{
+    /* EAX */
+    uint32_t ext_apic_id;
+    /* EBX */
+    uint32_t core_id             :  8;
+    uint32_t threads_per_core    :  8;/* Biased - 1 */
+    uint32_t _pad0               : 16;
+    /* ECX */
+    uint32_t node_id             :  8;
+    uint32_t nodes_per_processor :  3;/* Biased - 1 */
+    uint32_t _pad1               : 21;
+    /* EDX */
+    uint32_t _pad2;
+};
+
+
+
+/* Static Asserts */
+_Static_assert(sizeof(pthread_mutex_t) <= CL_SIZE,
+               "pthread mutex larger than a cacheline!");
+_Static_assert(sizeof(nabla_cpuid_generic_t) == 16,
+               "struct nabla_cpuid_generic_t must be exactly 16 bytes!");
+_Static_assert(sizeof(nabla_cpuid_0000000b_t) == sizeof(nabla_cpuid_generic_t),
+               "struct nabla_cpuid_0000000b_t must be exactly of the same size as nabla_cpuid_generic_t!");
+_Static_assert(sizeof(nabla_cpuid_80000001_amd_t) == sizeof(nabla_cpuid_generic_t),
+               "struct nabla_cpuid_80000001_amd_t must be exactly of the same size as nabla_cpuid_generic_t!");
+_Static_assert(sizeof(nabla_cpuid_80000008_amd_t) == sizeof(nabla_cpuid_generic_t),
+               "struct nabla_cpuid_80000008_amd_t must be exactly of the same size as nabla_cpuid_generic_t!");
+_Static_assert(sizeof(nabla_cpuid_8000001d_amd_t) == sizeof(nabla_cpuid_generic_t),
+               "struct nabla_cpuid_8000001d_amd_t must be exactly of the same size as nabla_cpuid_generic_t!");
+_Static_assert(sizeof(nabla_cpuid_8000001e_amd_t) == sizeof(nabla_cpuid_generic_t),
+               "struct nabla_cpuid_8000001e_amd_t must be exactly of the same size as nabla_cpuid_generic_t!");
 
 
 
 /* Extern Function Declarations */
-extern uint32_t nabla_cpuid_x86(void* regs, uint32_t eax, uint32_t ecx, int sel);
+extern char*       nabla_uint32tobin(char buf[33], uint32_t v);
+extern uint32_t    nabla_pext32(uint32_t v, uint32_t sel);
+extern uint32_t    nabla_lzcnt32(uint32_t v);
+extern uint32_t    nabla_tzcnt32(uint32_t v);
+extern uint32_t    nabla_popcnt32(uint32_t v);
+extern uint32_t    nabla_cpuid_x86(void* regs, uint32_t leaf, uint32_t subleaf, int sel);
+extern uint32_t    nabla_cpuid_x86_is_leaf_supported(uint32_t leaf);
+extern uint32_t    nabla_cpuid_x86_family(void);
+extern uint32_t    nabla_cpuid_x86_model(void);
+extern uint32_t    nabla_cpuid_x86_stepping(void);
+extern uint32_t    nabla_cpuid_x86_family_model_stepping(void);
+extern int         nabla_cpuid_x86_is_amd(void);
+extern int         nabla_cpuid_x86_is_intel(void);
+extern int         nabla_cpuid_x86_is_hygon(void);
+extern int         nabla_cpuid_x86_is_amd_or_hygon(void);
+extern const char* nabla_cpuid_x86_microarchitecture(void);
+extern uint32_t    nabla_cpuid_x86_apicid_initial(void);
+extern uint32_t    nabla_cpuid_x86_apicid_extended(void);
+extern uint32_t    nabla_cpuid_x86_apicid_mask_smt(void);
+extern uint32_t    nabla_cpuid_x86_apicid_mask_core_logical(void);
+extern uint32_t    nabla_cpuid_x86_apicid_mask_core_physical(void);
+extern uint32_t    nabla_cpuid_x86_apicid_mask_core_llc(void);
+extern uint32_t    nabla_cpuid_x86_apicid_mask_package(void);
+extern uint32_t    nabla_cpuid_x86_apicid_mask_amd_ccd(void);
+extern uint32_t    nabla_cpuid_x86_apicid_mask_amd_ccx(void);
 
 
 
@@ -37,76 +260,169 @@ int main(int argc, char* argv[]){
     (void)argv;
     int i,j;
     
-#if 0
+#if 1
     const int EAX=0, EBX=1, ECX=2, EDX=3;
-    char     manubrand[17] = {0};
     char     procbrand[64];
-    uint32_t tmp;
-    uint32_t maxleaf   = nabla_cpuid_x86(manubrand, 0,          0, EAX);
-    uint32_t maxleafex = nabla_cpuid_x86(0,         0x80000000, 0, EAX);
-    uint32_t leaf01[4];
-    uint32_t leaf0Becx0[4];
-    if(maxleaf == 0){
+    nabla_cpuid_generic_t      manubrand;
+    nabla_cpuid_0000000b_t     topoleaf;
+    nabla_cpuid_80000001_amd_t featuresext;
+    nabla_cpuid_80000008_amd_t leafx08;
+    nabla_cpuid_8000001d_amd_t cachelv;
+    nabla_cpuid_8000001e_amd_t extapicid;
+    if(!nabla_cpuid_x86_is_leaf_supported(1)){
         fprintf(stderr, "No CPUID leaves!\n");
         return 1;
     }
-    if(maxleafex <= 0x80000000L){
+    if(!nabla_cpuid_x86_is_leaf_supported(0x80000001)){
         fprintf(stderr, "No CPUID extended leaves!\n");
         return 1;
     }
-    memcpy(&tmp,         manubrand+8,  4);
-    memcpy(manubrand+8,  manubrand+12, 4);
-    memcpy(manubrand+12, &tmp,         4);
-    nabla_cpuid_x86(leaf01,                1, 0, EAX);
-    nabla_cpuid_x86(leaf0Becx0,   0x0000000B, 0, EAX);
-    nabla_cpuid_x86(procbrand+ 0, 0x80000002, 0, EAX);
-    nabla_cpuid_x86(procbrand+16, 0x80000003, 0, EAX);
-    nabla_cpuid_x86(procbrand+32, 0x80000004, 0, EAX);
-    nabla_cpuid_x86(procbrand+48, 0x80000005, 0, EAX);
-    uint32_t extendedtopo  = nabla_cpuid_x86(0, 0x0B, 0, EBX);
-    uint32_t x2apicsupport = (nabla_cpuid_x86(0, 0x01, 0, ECX) >> 21)&1;
-    uint32_t x2apicid      = nabla_cpuid_x86(0, 0x0B, 0, EDX);
-    uint32_t level0_type   = (nabla_cpuid_x86(0, 0x0B, 0, ECX) >> 8) & 0xFF;
-    uint32_t level1_type   = (nabla_cpuid_x86(0, 0x0B, 1, ECX) >> 8) & 0xFF;
-    uint32_t level2_type   = (nabla_cpuid_x86(0, 0x0B, 2, ECX) >> 8) & 0xFF;
-    uint32_t level3_type   = (nabla_cpuid_x86(0, 0x0B, 3, ECX) >> 8) & 0xFF;
-    uint32_t level0_width  = nabla_cpuid_x86(0, 0x0B, 0, EAX) & 31;
-    uint32_t level1_width  = nabla_cpuid_x86(0, 0x0B, 1, EAX) & 31;
-    uint32_t level2_width  = nabla_cpuid_x86(0, 0x0B, 2, EAX) & 31;
-    uint32_t level3_width  = nabla_cpuid_x86(0, 0x0B, 3, EAX) & 31;
-    uint32_t level0_max    = nabla_cpuid_x86(0, 0x0B, 0, EBX) & 65535;
-    uint32_t level1_max    = nabla_cpuid_x86(0, 0x0B, 1, EBX) & 65535;
-    uint32_t level2_max    = nabla_cpuid_x86(0, 0x0B, 2, EBX) & 65535;
-    uint32_t level3_max    = nabla_cpuid_x86(0, 0x0B, 3, EBX) & 65535;
-    uint32_t level0_shift  = 0;
-    uint32_t level1_shift  = level0_shift+level0_width;
-    uint32_t level2_shift  = level1_shift+level1_width;
-    uint32_t level3_shift  = level2_shift+level2_width;
-    uint32_t proctopoeax   = nabla_cpuid_x86(0, 0x8000001E, 0, EAX);
-    uint32_t proctopoebx   = nabla_cpuid_x86(0, 0x8000001E, 0, EBX);
-    uint32_t proctopoecx   = nabla_cpuid_x86(0, 0x8000001E, 0, ECX);
-    uint32_t proctopoedx   = nabla_cpuid_x86(0, 0x8000001E, 0, EDX);
+    nabla_cpuid_x86(&manubrand,    0,          0, EAX);
+    nabla_cpuid_x86(&featuresext,  0x80000001, 0, EAX);
+    nabla_cpuid_x86(procbrand+ 0,  0x80000002, 0, EAX);
+    nabla_cpuid_x86(procbrand+16,  0x80000003, 0, EBX);
+    nabla_cpuid_x86(procbrand+32,  0x80000004, 0, ECX);
+    nabla_cpuid_x86(procbrand+48,  0x80000005, 0, EDX);
+    nabla_cpuid_x86(&leafx08,      0x80000008, 0, EAX);
+    nabla_cpuid_x86(&extapicid,    0x8000001E, 0, EAX);
+    uint32_t initapicid      = nabla_cpuid_x86_apicid_initial();
+    uint32_t x2apicid        = nabla_cpuid_x86_apicid_extended();
+    uint32_t x2apicidsupport = nabla_cpuid_x86_is_leaf_supported(0x0B) &&
+                               nabla_cpuid_x86(0, 0x0B, 0, EBX);
+    int smt = extapicid.threads_per_core > 0;
     
     fprintf(stdout,
-            "Manufacturer Brand String:     %s\n"
+            "Manufacturer Brand String:     %4.4s%4.4s%4.4s%s\n"
             "Processor Brand String:        %s\n"
-            "Max CPUID leaf:                %08x\n"
-            "Max CPUID extended leaf:       %08x\n"
-            "Extended topology enumeration: %d\n"
-            "x2APIC support:                %d\n"
-            "x2APIC ID:                     %d\n"
-            "Level 0 (SMT): Type %3d  [%d +: %d] max logical %d\n"
-            "Level 1:       Type %3d  [%d +: %d] max logical %d\n"
-            "Level 2:       Type %3d  [%d +: %d] max logical %d\n"
-            "Level 3:       Type %3d  [%d +: %d] max logical %d\n"
-            "%08x %08x %08x %08x\n",
-            manubrand+4, procbrand, maxleaf, maxleafex,
-            extendedtopo, x2apicsupport, x2apicid,
-            level0_type, level0_shift, level0_width, level0_max,
-            level1_type, level1_shift, level1_width, level1_max,
-            level2_type, level2_shift, level2_width, level2_max,
-            level3_type, level3_shift, level3_width, level3_max,
-            proctopoeax, proctopoebx,  proctopoecx,  proctopoedx);
+            "Processor CPUID Code:          %06X\n"
+            "Processor Family:              %Xh (%d)\n"
+            "Processor Model:               %Xh (%d)\n"
+            "Processor Stepping:            %d\n"
+            "Processor Microarchitecture:   %s\n"
+            "Max CPUID leaf/extended leaf:  %02Xh/%08Xh\n"
+            "SMT:                           %d-way\n"
+            "Init APIC ID:                  %u\n"
+            "x2APIC ID:                     %-10u%s\n"
+            "APIC SMT ID:                   %-10u (mask: %08x)\n"
+            "APIC Logical Core ID:          %-10u (mask: %08x, %d bits)\n"
+            "APIC Physical Core ID:         %-10u (mask: %08x)\n"
+            "APIC Package ID:               %-10u (mask: %08x)\n",
+            (const char*)&manubrand.ebx,
+            (const char*)&manubrand.edx,
+            (const char*)&manubrand.ecx,
+            (nabla_cpuid_x86_is_amd()   ? " (AMD)"   :
+             nabla_cpuid_x86_is_intel() ? " (Intel)" :
+             nabla_cpuid_x86_is_hygon() ? " (Hygon)" : ""),
+            procbrand,
+            nabla_cpuid_x86(0, 1, 0, EAX),
+            nabla_cpuid_x86_family(),   nabla_cpuid_x86_family(),
+            nabla_cpuid_x86_model(),    nabla_cpuid_x86_model(),
+            nabla_cpuid_x86_stepping(), nabla_cpuid_x86_microarchitecture(),
+            nabla_cpuid_x86_is_leaf_supported(0),
+            nabla_cpuid_x86_is_leaf_supported(0x80000000),
+            smt+1, initapicid, x2apicid,
+            x2apicidsupport ? " (x2APIC ID available)" : " (inferred as initial APIC ID)",
+            nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_smt()),
+            nabla_cpuid_x86_apicid_mask_smt(),
+            nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_core_logical()),
+            nabla_cpuid_x86_apicid_mask_core_logical(),
+            nabla_popcnt32(nabla_cpuid_x86_apicid_mask_core_logical()),
+            nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_core_physical()),
+            nabla_cpuid_x86_apicid_mask_core_physical(),
+            nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_package()),
+            nabla_cpuid_x86_apicid_mask_package());
+    
+    if(nabla_cpuid_x86_is_amd_or_hygon())
+        fprintf(stdout,
+                "APIC AMD CCD ID:               %-10u (mask: %08x)\n"
+                "APIC AMD CCX ID:               %-10u (mask: %08x)\n",
+                nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_amd_ccd()),
+                nabla_cpuid_x86_apicid_mask_amd_ccd(),
+                nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_amd_ccx()),
+                nabla_cpuid_x86_apicid_mask_amd_ccx());
+    
+    if(nabla_cpuid_x86_is_leaf_supported(0x0B)){
+        for(i=j=0; nabla_cpuid_x86(&topoleaf, 0x0B, i, 0),
+                   topoleaf.level_type; i++,j=topoleaf.next_level_shift){
+            char x2apicidbin[33];
+            nabla_uint32tobin(x2apicidbin, x2apicid);
+            
+            if(!i)
+                fprintf(stdout,
+                        "PROCESSOR HIERARCHY\n"
+                        "  TYPE   #PROCS  BITFIELD  SHIFT   X2APICID:---+---|---+---:---+---| = %u\n",
+                        topoleaf.ext_apic_id);
+            
+            {
+                fprintf(stdout,
+                        "  %-8s %4d  [%2d+:%-2d] %4d      %*.*s%*s = %u\n",
+                        (topoleaf.level_type == 1 ? "SMT"  : (
+                         topoleaf.level_type == 2 ? "Core" : "?")),
+                        topoleaf.logical_proc_count,
+                        j, topoleaf.next_level_shift-j,
+                        topoleaf.next_level_shift,
+                        32-j, topoleaf.next_level_shift-j,
+                        x2apicidbin+32-topoleaf.next_level_shift, j, "",
+                        (topoleaf.ext_apic_id & ~(~0<<topoleaf.next_level_shift)) >> j);
+            }
+            
+            if(topoleaf.level_type == 2 &&
+               nabla_cpuid_x86_is_amd_or_hygon()){
+                uint32_t maskccx = nabla_cpuid_x86_apicid_mask_amd_ccx();
+                uint32_t maskccd = nabla_cpuid_x86_apicid_mask_amd_ccd();
+                uint32_t masksub = nabla_cpuid_x86_apicid_mask_core_physical() ^ maskccx ^ maskccd;
+                
+                if(masksub && (maskccx || maskccd))
+                    fprintf(stdout,
+                            "  %-8s       [%2d+:%-2d]           %*.*s%*s = %u\n",
+                            "+SubCore", nabla_tzcnt32(masksub), nabla_popcnt32(masksub),
+                            32-nabla_tzcnt32(masksub), nabla_popcnt32(masksub),
+                            x2apicidbin+nabla_lzcnt32(masksub), nabla_tzcnt32(masksub), "",
+                            nabla_pext32(x2apicid, masksub));
+                
+                if(maskccx)
+                    fprintf(stdout,
+                            "  %-8s       [%2d+:%-2d]           %*.*s%*s = %u\n",
+                            "+CCX", nabla_tzcnt32(maskccx), nabla_popcnt32(maskccx),
+                            32-nabla_tzcnt32(maskccx), nabla_popcnt32(maskccx),
+                            x2apicidbin+nabla_lzcnt32(maskccx), nabla_tzcnt32(maskccx), "",
+                            nabla_pext32(x2apicid, maskccx));
+                
+                if(maskccd)
+                    fprintf(stdout,
+                            "  %-8s       [%2d+:%-2d]           %*.*s%*s = %u\n",
+                            "+CCD", nabla_tzcnt32(maskccd), nabla_popcnt32(maskccd),
+                            32-nabla_tzcnt32(maskccd), nabla_popcnt32(maskccd),
+                            x2apicidbin+nabla_lzcnt32(maskccd), nabla_tzcnt32(maskccd), "",
+                            nabla_pext32(x2apicid, maskccd));
+            }
+        }
+    }
+    
+    if(nabla_cpuid_x86_is_amd_or_hygon() &&
+       nabla_cpuid_x86_is_leaf_supported(0x8000001D)){
+        for(i=0; nabla_cpuid_x86(&cachelv, 0x8000001D, i, 0), cachelv.type; i++){
+            if(!i)
+                fprintf(stdout,
+                        "CACHE HIERARCHY\n"
+                        "  LVL$ SI? FA? INC? #WAYS x #SETS =     #CL x CLSZ =     SIZE / #CORE\n");
+            {
+                fprintf(stdout,
+                        "  L%c%c   %c   %c   %c  %5u    %5u   %7u   %3u  %10u    %4u\n",
+                        "?12345 "[cachelv.level],
+                        " di    "[cachelv.type],
+                        "ny"     [cachelv.self_init],
+                        "ny"     [cachelv.fully_assoc],
+                        "ny"     [cachelv.inclusive],
+                        (cachelv.W+1),
+                        (cachelv.S+1),
+                        (cachelv.W+1) * (cachelv.S+1),
+                        (cachelv.L+1),
+                        (cachelv.W+1) * (cachelv.S+1) * (cachelv.L+1),
+                        (cachelv.num_sharing+1));
+            }
+        }
+    }
 #endif
 #if 0
     extern int sgemm_mod_count(void);

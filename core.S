@@ -102,7 +102,112 @@
 
 
 .intel_syntax noprefix
+.section .rodata.str1.1, "aMS", @progbits, 1
+
+# Microarchitecture Strings
+.Luarch_unknown:       .asciz "(unknown)"
+.Luarch_unknown_intel: .asciz "(unknown Intel)"
+.Luarch_unknown_amd:   .asciz "(unknown AMD)"
+.Luarch_zen:           .asciz "Zen"       # Rel. Mar 2017; 14nm;  EPYC Naples, Raven Ridge, Raven Ridge
+.Luarch_zenp:          .asciz "Zen+"      # Rel. Apr 2018; 12nm;  Pinnacle Ridge, Colfax
+.Luarch_zen2:          .asciz "Zen 2"     # Rel. Jul 2019;  7nm;  EPYC Rome,  Matisse, Renoir, Lucienne, Castle Peak
+.Luarch_zen3:          .asciz "Zen 3"     # Rel. Nov 2020;  7nm+; EPYC Milan, Vermeer, Cezanne, Genesis Peak
+.Luarch_zen3p:         .asciz "Zen 3+"    # Ann. Jan 2022;  6nm;  Rembrandt
+.Luarch_zen4:          .asciz "Zen 4"     # Ann. Nov 2021;  5nm;  EPYC Genoa, Raphael, Phoenix
+.Luarch_zen4c:         .asciz "Zen 4c"    # Ann. Nov 2021;  5nm;  EPYC Bergamo
+.Luarch_zen5:          .asciz "Zen 5"     # Future (2023);  3nm;  EPYC Turin, Da Vinci, Granite Ridge, Strix Point
+
+#
+# Package Strings
+#
+# On AMD, the package type is reported in CPUID.80000001h.EBX[31:28]
+#
+.Lpackage_unknown:     .asciz "(unknown)" # Xh;  Unknown package
+.Lpackage_fp5:         .asciz "FP5"       # 0h;  Mobile  Zen   / Zen+
+.Lpackage_fp6:         .asciz "FP6"       # 0h;  Mobile  Zen 2 / Zen 3
+.Lpackage_am4:         .asciz "AM4"       # 2h;  Desktop Zen/Zen+/Zen 2/Zen 3
+.Lpackage_sp3:         .asciz "SP3"       # 4h;  EPYC Zen/Zen 2/Zen 3 Naples/Rome/Milan
+.Lpackage_sp3r2:       .asciz "SP3r2"     # 7h;  a.k.a. TR4;   Zen / Zen+ Threadripper
+.Lpackage_sp3r3:       .asciz "SP3r3"     # 7h;  a.k.a. sTRX4; Zen 2 Castle Peak Threadripper
+.Lpackage_sp3r4:       .asciz "SP3r4"     # 4h;  a.k.a. sWRX8; Zen 2 Castle Peak Threadripper PRO
+                                          #                    Zen 3 Chagall     Threadripper PRO
+.Lpackage_sp4:         .asciz "SP4"       # Xh;  Embedded EPYC Zen; Snowy Owl
+.Lpackage_sp4r2:       .asciz "SP4r2"     # Xh;  Embedded EPYC Zen; Snowy Owl
+.Lpackage_fp7:         .asciz "FP7"       # Xh;  Mobile  Zen 3+ Rembrandt
+.Lpackage_fp7r2:       .asciz "FP7r2"     # Xh;  Mobile  Zen 3+ Rembrandt
+.Lpackage_fp8:         .asciz "FP8"       # Xh;  Mobile  Zen 4  Phoenix
+.Lpackage_am5:         .asciz "AM5"       # Xh;  Desktop Zen 4  Raphael
+.Lpackage_sp5:         .asciz "SP5"       # Xh;  EPYC Zen 4 Genoa?/Bergamo?
+
+# Codename Strings
+.Lcodename_unknown:            .asciz "(unknown)"         # Unknown
+.Lcodename_unknown_intel:      .asciz "(unknown Intel)"   # Unknown Intel
+.Lcodename_unknown_amd:        .asciz "(unknown AMD)"     # Unknown AMD
+#   AMD
+#     Family 17h
+#       Zen,   14nm
+.Lcodename_snowy_owl:          .asciz "Snowy Owl"         # Family 17h Model 01h;  Package SP4/SP4r2;  EPYC Embedded 3000-series, 4C/4T-16C/32T
+.Lcodename_summit_ridge:       .asciz "Summit Ridge"      # Family 17h Model 01h;  Package AM4;        Ryzen (PRO?) 1000?-series, 4C/4T-8C/16T
+.Lcodename_whitehaven:         .asciz "Whitehaven"        # Family 17h Model 01h;  Package SP3r2;      Ryzen Threadripper, 8C/16T-16C/32T
+.Lcodename_naples:             .asciz "Naples"            # Family 17h Model 01h;  Package SP3;        EPYC 7xx1(P)-series, 8C/16T-32C/64T
+.Lcodename_raven_ridge:        .asciz "Raven Ridge"       # Family 17h Model 11h;  Package AM4/FP5;    Ryzen (PRO?) 2x00?? -series, (PRO?) 2x0?? -series 2C/4T-4C/8T
+.Lcodename_great_horned_owl:   .asciz "Great Horned Owl"  # Family 17h Model 11h;  Package FP5;        Ryzen Embedded V1000-series, 4C/8T except V1202B 2C/4T
+.Lcodename_banded_kestrel:     .asciz "Banded Kestrel"    # Family 17h Model 18h;  Package FP5;        Ryzen Embedded R1000-series, 2C/4T
+.Lcodename_dali:               .asciz "Dali"              # Family 17h Model 20h;  Package FP5;        Ryzen 3x50U-series, 2C/4T + Radeon Vega 2/3
+.Lcodename_fireflight:         .asciz "FireFlight"        # Family 17h Model 50h;  Semi-custom AMD design for Subor Z+ gaming console (cancelled?)
+#       Zen+,  12nm
+.Lcodename_pinnacle_ridge:     .asciz "Pinnacle Ridge"    # Family 17h Model 08h;  Package AM4;        Ryzen (PRO?) 2x00?-series, 4C/4T-8C/16T
+.Lcodename_colfax:             .asciz "Colfax"            # Family 17h Model 08h;  Package SP3r2;      Ryzen Threadripper 29x0(X|WX)-series (2nd-generation), 12C/24T-32C/64T
+.Lcodename_picasso:            .asciz "Picasso"           # Family 17h Model 18h;  Package FP5;        Ryzen (PRO?) 3xx0?? -series, 4C/4T-8C/16T
+#       Zen 2,  7nm  TSMC FinFET
+.Lcodename_castle_peak:        .asciz "Castle Peak"       # Family 17h Model 31h;  Package SP3r3;      Ryzen Threadripper     39x0X-series (3rd-generation), 24C/48T-64C/128T
+                                                          #                        Package SP3r4;      Ryzen Threadripper PRO 39x5X-series (3rd-generation), 12C/24T-64C/128T
+.Lcodename_rome:               .asciz "Rome"              # Family 17h Model 31h;  Package SP3;        EPYC 7xx2(P)-series, 8C/16T-64C/128T
+.Lcodename_xbox_series_x:      .asciz "Xbox Series X"     # Family 17h Model 47h;  Xbox Series X, 8C/16T.
+                                                          #                        Faulty iGPU chips reissued as "AMD 4700S 8-Core Desktop Processor Kit"
+                                                          #                        PkgType=0, 8BitBrandId=0, BrandId=0, LogicalProcessorCount=16 & ThreadsPerCore+1=2.
+                                                          #                        https://twitter.com/InstLatX64/status/1384441961533292545/photo/1
+.Lcodename_grey_hawk:          .asciz "Grey Hawk"         # Family 17h Model 60h;  Package FP6;        Ryzen Embedded V2000-series, 6C/12T or 8C/16T
+.Lcodename_renoir:             .asciz "Renoir"            # Family 17h Model 60h;  Package FP6;        Ryzen (PRO?) 4x00?? -series, 4C/4T-8C/16T
+.Lcodename_lucienne:           .asciz "Lucienne"          # Family 17h Model 68h;  Package FP6;        Ryzen 5x00U-series, 4C/8T-8C/16T
+.Lcodename_matisse:            .asciz "Matisse"           # Family 17h Model 71h;  Package AM4;        Ryzen (PRO?) 3xx0?? -series, 6C/6T-16C/32T
+.Lcodename_van_gogh:           .asciz "Van Gogh"          # Family 17h Model 90h; (Future; Rumour; 4C/8T?)
+.Lcodename_mero:               .asciz "Mero"              # Family 17h Model 98h; (Future; Rumour; Mobile?)
+#     Family 18h
+#       Zen,   14nm
+.Lcodename_dhyana:             .asciz "Dhyana"            # Family 18h Model 00h;  AMD-Hygon collaboration
+#     Family 19h
+#       Zen 3,  7nm+ TSMC FinFET
+.Lcodename_genesis_peak:       .asciz "Genesis Peak"      # Family 19h Model XXh;  Package SP3r3;      Ryzen Threadripper 59x0?? -series (5th-generation)?
+.Lcodename_milan:              .asciz "Milan"             # Family 19h Model 01h;  Package SP3;        EPYC 7xx3(P)-series, 8C/16T-64C/128T. Engineering Sample Model 00h also seen.
+.Lcodename_milan_x:            .asciz "Milan-X"           # Family 19h Model 01h,
+                                                          #         Stepping  B2;  Package SP3;        EPYC 7xx3(P)-series with 3D cache, 8C/16T-64C/128T.
+.Lcodename_chagall:            .asciz "Chagall"           # Family 19h Model 08h;  Package SP3r4;      Ryzen Threadripper PRO 59x5WX-series (5th-generation?), 12C/24T-64C/128T
+.Lcodename_vermeer:            .asciz "Vermeer"           # Family 19h Model 21h;  Package AM4;        Ryzen 5xx0(X?)-series Desktop
+                                                          #            Model 22h also seen?
+.Lcodename_trento:             .asciz "Trento"            # Family 19h Model 30h;  Package SP3;        EPYC 7xx3??? -series, used in Frontier supercomputer
+.Lcodename_cezanne:            .asciz "Cezanne"           # Family 19h Model 51h;  Package AM4/FP6;    Ryzen 5000-series
+                                                          #            Model 50h also seen?
+#       Zen 3+, 6nm  TSMC FinFET
+.Lcodename_rembrandt:          .asciz "Rembrandt"         # Family 19h Model 40h;  Package FP7/FP7r2;  Ryzen 6000-series Mobile
+.Lcodename_embeddedv3000:      .asciz "?"                 # Family 19h Model XXh;  Package FP7r2;      Ryzen Embedded V3000-series, 6C/12T or 8C/16T
+#       Zen 4,  5nm
+.Lcodename_genoa:              .asciz "Genoa"             # Family 19h Model 10h;  Package SP5;        EPYC 7xx4??? -series, up to 96C/192T
+.Lcodename_raphael:            .asciz "Raphael"           # Family 19h Model 60h;  Package AM5;        Ryzen 7000-series Desktop?
+.Lcodename_phoenix:            .asciz "Phoenix"           # Family 19h Model 70h;  Package FP8;        Ryzen 7000-series Mobile?
+#       Zen 4c, 5nm
+.Lcodename_bergamo:            .asciz "Bergamo"           # Family 19h Model A0h;  Package SP5;        EPYC 7xx4??? -series, up to 128C/256T?
+#       Zen 5,  3nm
+.Lcodename_strix_point:        .asciz "Strix Point"       # Family 19h Model 18h;  Package FP8?;       Ryzen 8000-series Mobile?
+.Lcodename_granite_ridge:      .asciz "Granite Ridge"     # Family 19h Model XXh;  Package AM5?;       Ryzen 8000-series Desktop?
+.Lcodename_da_vinci:           .asciz "Da Vinci"          # Family 19h Model XXh;  Package SP5r2?;     Ryzen Threadripper?
+.Lcodename_turin:              .asciz "Turin"             # Family 19h Model XXh;  Package SP5?;       EPYC 7xx5??? -series, up to 256C/512T?
+
+
+
+
 .text
+.align 64
 
 #define K1     0b0000010000100001000100010000
 #define KMmask 0b0111100000111110000000000000
@@ -112,6 +217,118 @@
 #define KNmixm ((5<<0|1<<9)<<5)
 #define KMshft 23
 #define KNshft 19
+#define FMS(f,m,s) ((0x##f & 0xFF)<<12 | (0x##m & 0xFF)<<4 | (0x##s & 0xF))
+
+
+#
+# Nabla Convert uint32_t to full binary string of length 33.
+#
+#     char* nabla_uint32tobin(char buf[33], uint32_t v)
+#
+# Returns buf. Handy to print x2APIC ID.
+#
+.globl nabla_uint32tobin
+nabla_uint32tobin:
+    mov   rax,   rdi
+    mov   edx,   32
+0:  add   esi,   esi
+    setc  cl
+    add   cl,    '0'
+    mov  [rdi],  cl
+    inc   rdi
+    dec   edx
+    jnz   0b
+    mov  [rdi],  dl
+    retq
+
+
+#
+# Nabla Bit Extract from uint32_t
+#
+#     uint32_t nabla_pext32(uint32_t v, uint32_t sel);
+#
+# Returns selected bits placed contiguously. Handy to manipulate x2APIC ID.
+#
+.globl nabla_pext32
+nabla_pext32:
+    mov     eax,  edi
+    cmp     esi,  ~0         # Early-exit if selector all-ones
+    je 0f
+    and     eax,  esi        # Early-exit if (sel&v) == 0
+    jz 0f
+    xor     eax,  eax        # Clear shift register
+1:  lzcnt   ecx,  esi        # Detect MSB of next bitfield in selector.
+    shl     esi,  cl         # Align selector to MSB
+    shl     edi,  cl         # Align value    to MSB
+    not     esi              # Negative selector polarity (since no leading-ones count)
+    lzcnt   ecx,  esi        # Count consecutive bits to copy from value
+    not     esi              # Positive selector polarity
+    shld    eax,  edi, cl    # Shift in value bits into EAX from the right
+    shl     edi,  cl         # Eject copied value bits out the top
+    shl     esi,  cl         # Eject equal count of selector bits
+    jnz 1b                   # Continue iterating if selector still non-zero.
+0:  retq
+
+
+#
+# Nabla Leading Zero Count from uint32_t
+#
+#     uint32_t nabla_lzcnt32(uint32_t v);
+#
+# Returns leading zero count. Handy to manipulate x2APIC ID.
+#
+.globl nabla_lzcnt32
+nabla_lzcnt32:
+    mov     eax,  32         # Prepare full-width count
+    test    edi,  edi        # Check if input zero
+    jz 0f                    # If 0, return 32
+    lzcnt   eax,  edi        # Otherwise, return leading zero count
+0:  retq                     # Return
+
+
+#
+# Nabla Trailing Zero Count from uint32_t
+#
+#     uint32_t nabla_tzcnt32(uint32_t v);
+#
+# Returns trailing zero count. Handy to manipulate x2APIC ID.
+#
+.globl nabla_tzcnt32
+nabla_tzcnt32:
+    mov     eax,  32         # Prepare full-width count
+    test    edi,  edi        # Check if input zero
+    jz 0f                    # If 0, return 32
+    tzcnt   eax,  edi        # Otherwise, return trailing zero count
+0:  retq                     # Return
+
+
+#
+# Nabla Population Count from uint32_t
+#
+#     uint32_t nabla_popcnt32(uint32_t v);
+#
+# Returns population count (Hamming Weight). Handy to manipulate x2APIC ID.
+#
+.globl nabla_popcnt32
+nabla_popcnt32:
+    mov     eax,  edi
+    and     eax,  0xAAAAAAAA # Mask hi bits
+    and     edi,  0x55555555 # Mask lo bits
+    shr     eax,  1
+    add     eax,  edi
+    mov     edi,  eax
+    and     eax,  0xCCCCCCCC # Mask hi twobits
+    and     edi,  0x33333333 # Mask lo twobits
+    shr     eax,  2
+    add     eax,  edi
+    mov     edi,  eax
+    and     eax,  0xF0F0F0F0 # Mask hi nibbles
+    and     edi,  0x0F0F0F0F # Mask lo nibbles
+    shr     eax,  4
+    add     eax,  edi
+    imul    eax,  eax,  0x01010101
+    shr     eax,  24
+    retq
 
 
 #
@@ -123,13 +340,12 @@
 # The return value is one selected register from CPUID's output:
 #     EAX=0    EBX=1    ECX=2    EDX=3
 #
-.align  64
-.global nabla_cpuid_x86
+.globl nabla_cpuid_x86
 nabla_cpuid_x86:
     mov     r8d,  ecx
     mov     eax,  esi
     mov     ecx,  edx
-    mov     rsi,  rbx
+    mov     rsi,  rbx  # Save RBX
     cpuid
     test    rdi,  rdi
     je 0f
@@ -143,8 +359,593 @@ nabla_cpuid_x86:
     cmove   eax,  ecx
     cmp     r8d,  3
     cmove   eax,  edx
-    mov     rbx,  rsi
+    mov     rbx,  rsi  # Restore RBX
     retq
+
+
+#
+# Nabla CPUID x86 CPUID is leaf supported?
+#
+#     uint32_t nabla_cpuid_x86_is_leaf_supported(uint32_t leaf)
+#
+# Returns 0 if unsupported, or the maximum supported leaf in the series
+# (standard or extended) if supported. If the leaf is supported, the
+# return value is always greater than or equal to the input.
+#
+# HACK: [FOR INTERNAL ASM USE ONLY]
+# HACK: THIS FUNCTION HAS THE FOLLOWING SECRET RETURN VALUES
+# HACK:     EAX      = 0, or maximum supported leaf >= x
+# HACK:     EDI      = CPUID.x.EAX
+# HACK:     ESI      = CPUID.x.EBX
+# HACK:     ECX      = CPUID.x.ECX
+# HACK:     EDX      = CPUID.x.EDX
+# HACK:     EFLAGS.Z = !EAX
+#
+.globl nabla_cpuid_x86_is_leaf_supported
+nabla_cpuid_x86_is_leaf_supported:
+    mov     rsi,  rbx  # Save RBX
+    mov     eax,  edi
+    and     eax,  1<<31
+    cpuid
+    cmp     eax,  edi
+    jb 0f              # Unsupported? Jump to Abort
+    xchg    eax,  edi  # After swap: EDI contains max supported, EAX contains query
+    xor     ecx,  ecx  # Force subleaf 0.
+    cpuid
+    xchg    eax,  edi  # After swap: EAX contains max supported, EDI contains CPUID.x.EAX
+    xchg    rbx,  rsi  # Restore RBX
+    test    eax,  eax  # Return: EAX=maximum supported leaf
+                       #         EDI=CPUID.x.EAX
+                       #         ESI=CPUID.x.EBX
+                       #         ECX=CPUID.x.ECX
+                       #         EDX=CPUID.x.EDX
+    retq               #         (Z set to 0)
+0:  mov     rbx,  rsi  # Restore RBX
+    xor     edi,  edi  # Return: EAX=0
+    xor     esi,  esi  #         EDI=CPUID.x.EAX=0
+    xor     eax,  eax  #         ESI=CPUID.x.EBX=0
+    xor     ecx,  ecx  #         ECX=CPUID.x.ECX=0
+    xor     edx,  edx  #         EDX=CPUID.x.EDX=0
+    retq               #         (Z already set to 1)
+
+nabla_cpuid_x86_is_leaf_01_supported:
+    mov     edi,  1
+    jmp nabla_cpuid_x86_is_leaf_supported
+
+nabla_cpuid_x86_is_leaf_0b_supported:
+    mov     edi,  0x0b
+    jmp nabla_cpuid_x86_is_leaf_supported
+
+nabla_cpuid_x86_is_leaf_80000008_supported:
+    mov     edi,  0x80000008
+    jmp nabla_cpuid_x86_is_leaf_supported
+
+
+#
+# Nabla CPUID x86 Display Family, Model, Stepping
+#
+# Relies on inspection of CPUID[EAX=0].EAX and CPUID[EAX=1].EAX:
+#    [27:20] ExtFamily   FF
+#    [19:16] ExtModel      F
+#    [15:12] Reserved       0
+#    [11: 8] BaseFamily      F
+#    [ 7: 4] BaseModel        F
+#    [ 3: 0] Stepping          F
+#
+#     DisplayFamily = BaseFamily in {15}   ? BaseFamily + ExtFamily  : BaseFamily
+#     DisplayModel  = BaseFamily in {6,15} ? BaseModel | ExtModel<<4 : BaseModel
+#
+# Returns 0 if family, model or stepping cannot be detected.
+#
+.globl nabla_cpuid_x86_family
+.globl nabla_cpuid_x86_model
+.globl nabla_cpuid_x86_stepping
+.globl nabla_cpuid_x86_family_model_stepping
+nabla_cpuid_x86_family:
+    callq   nabla_cpuid_x86_family_model_stepping
+    shr     eax,  12
+    retq
+
+nabla_cpuid_x86_model:
+    callq   nabla_cpuid_x86_family_model_stepping
+    shr     eax,  4
+    and     eax,  0xFF
+    retq
+
+nabla_cpuid_x86_stepping:
+    callq   nabla_cpuid_x86_family_model_stepping
+    and     eax,  0xF
+    retq
+
+nabla_cpuid_x86_family_model_stepping:
+    callq   nabla_cpuid_x86_is_leaf_01_supported
+    jz 0f
+    mov     ecx,  edi
+    and     ecx,  0x000FF
+    mov     eax,  edi
+    shr     eax,  16
+    shl     eax,  8
+    or      eax,  ecx      # EAX = ExtFamily|ExtModel|BaseModel|Stepping, 20 bits
+    and     edi,  0x00F00
+    shl     edi,  4        # EDI = BaseFamily|0000|0000|0000, 16 bits
+    cmp     edi,  15 << 12
+    je 1f
+    cmp     edi,  6  << 12
+    je 2f
+    and     eax,  0x000FF  # Entered directly if BaseFamily is neither 6 nor 15
+2:  and     eax,  0x00FFF  # Entered directly if BaseFamily is 6,  harmless fallthrough
+1:  add     eax,  edi      # Entered directly if BaseFamily is 15, harmless fallthrough
+0:  retq
+
+
+#
+# Nabla CPUID x86 Initial APIC ID
+#
+#     uint32_t nabla_cpuid_x86_apicid_initial(void);
+#
+# Returns 0 if Initial APIC ID cannot be detected.
+#
+.globl nabla_cpuid_x86_apicid_initial
+nabla_cpuid_x86_apicid_initial:
+    callq   nabla_cpuid_x86_is_leaf_01_supported
+    mov     eax,  esi
+    shr     eax,  24
+    retq
+
+
+#
+# Nabla CPUID x86 x2APIC ID
+#
+#     uint32_t nabla_cpuid_x86_apicid_extended(void);
+#
+# Returns Init APIC ID if x2APIC ID cannot be detected.
+#
+##
+## INTEL SDM (8.6 DETECTING HARDWARE MULTI-THREADING SUPPORT AND TOPOLOGY):
+##
+##    Software can detect the availability of the CPUID extended topology
+##    enumeration leaf (0BH) by performing two steps:
+##
+##      - Check maximum input value for basic CPUID information by executing
+##        CPUID with EAX= 0. If CPUID.0H:EAX is greater than or equal or 11 (0BH),
+##        then proceed to next step,
+##      - Check CPUID.EAX=0BH, ECX=0H:EBX is non-zero.
+##
+##    If both of the above conditions are true, extended topology enumeration
+##    leaf is available. Note the presence of CPUID leaf 0BH in a processor does
+##    not guarantee support that the local APIC supports x2APIC.
+##    If CPUID.(EAX=0BH, ECX=0H):EBX returns zero and maximum input value for
+##    basic CPUID information is greater than 0BH, then CPUID.0BH leaf is not
+##    supported on that processor.
+##
+#
+.globl nabla_cpuid_x86_apicid_extended
+nabla_cpuid_x86_apicid_extended:
+    callq   nabla_cpuid_x86_is_leaf_0b_supported
+    jz nabla_cpuid_x86_apicid_initial # If Extended Topology Enumeration Leaf not available, tail-call for Init APIC ID
+    test    esi,  esi                 # [LEAF_Bh] Test if LogicalProcessorCount > 0.
+    jz nabla_cpuid_x86_apicid_initial # [LEAF_Bh] ... if not usable, tail-call for Init APIC ID
+    mov     eax,  edx                 # [LEAF_Bh] Place x2APIC ID in EAX for return
+    retq                              # [LEAF_Bh] Return
+
+
+#
+# Nabla CPUID x86 APIC ID Mask Logical Core
+#
+#     uint32_t nabla_cpuid_x86_apicid_mask_core_logical(void);
+#
+# Returns the APIC ID mask for *logical* cores, including the thread sub-ID if any.
+#
+#   - If the mask cannot be detected, return all-ones mask (equivalently,
+#     assume all logical cores are part of the same package)
+#   - If package is 1C/1T, return all-zeroes mask.
+#
+.globl nabla_cpuid_x86_apicid_mask_core_logical
+nabla_cpuid_x86_apicid_mask_core_logical:
+    callq   nabla_cpuid_x86_is_amd_or_hygon
+    jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_0b
+    callq   nabla_cpuid_x86_is_leaf_80000008_supported
+    jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_0b
+    xor     eax,  eax        # [LEAF_80000008h] Set mask to all-zeroes
+    and     ecx,  0xF0FF     # [LEAF_80000008h] Clear everything except ApicIdSize and NT
+    jz  0f                   # [LEAF_80000008h] ApicIdSize=0 && NT=0 -> 1C/1T, 0 APIC bits
+    not     eax              # [LEAF_80000008h] Materialize all-ones (-1) from all-zeroes (0)
+    test    ecx,  0xF000     # [LEAF_80000008h] Check ApicIdSize > 0
+    jnz 3f                   # [LEAF_80000008h] Use ApicIdSize if > 0
+4:  lzcnt   ecx,  ecx        # [LEAF_80000008h] Count leading bits, cannot be zero
+    shl     eax,  cl         # [LEAF_80000008h] Materialize mask over thread bits by...
+    shr     eax,  cl         # [LEAF_80000008h] ... clearing upper (ECX) bits of EAX.
+    not     eax              # [LEAF_80000008h] HACK: Reverse polarity, fallthrough.
+                             # [LEAF_80000008h] HACK: (tricky branch-free trick)
+3:  shr     ecx,  12         # [LEAF_80000008h] Isolate ApicIdSize
+2:  shl     eax,  cl         # [LEAF_80000008h] Materialize mask over thread bits by...
+1:  not     eax              # [LEAF_80000008h] clearing lower (ECX) bits of EAX and reversing
+                             # [LEAF_80000008h] HACK: (if code falls through from above, the
+                             # [LEAF_80000008h] HACK:  shift amount is guaranteed to be 0)
+0:  retq                     # Return
+.Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_0b:
+    callq   nabla_cpuid_x86_is_leaf_0b_supported
+    jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_01
+    test    ebx,  ebx        # [LEAF_Bh] Check Leaf B usable
+    jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_01
+    mov     rsi,  rbx        # [LEAF_Bh] Save RBX
+    xor     ecx,  ecx        # [LEAF_Bh] Extended Topology Enumeration Subleaf select 0
+5:  inc     ecx              # [LEAF_Bh] Extended Topology Enumeration Subleaf select increment
+    and     ecx,  0xFF       # [LEAF_Bh] Extended Topology Enumeration Subleaf select mod-256
+    mov     eax,  11         # [LEAF_Bh] Extended Topology Enumeration Leaf select
+    cpuid                    # [LEAF_Bh] Extended Topology Enumeration Leaf read
+    mov     rbx,  rsi        # [LEAF_Bh] Restore RBX
+    mov     edx,  ecx        # [LEAF_Bh] Copy CPUID.B.ECX
+    and     edx,  0xFF00     # [LEAF_Bh] Isolate CPUID.B.ECX[15:8] = Level type
+    jz  1b                   # [LEAF_Bh] Level type = "Invalid"? -> EAX already clear & return all-ones mask
+    cmp     edx,  2<<8       # [LEAF_Bh] Level type = "Core"?
+    jne 5b                   # [LEAF_Bh] If != "Core", move to next subleaf
+    mov     ecx,  eax        # [LEAF_Bh] Level type = "Core". Place shift amount in ECX.
+    and     ecx,  0x1F       # [LEAF_Bh] Isolate CPUID.B.EAX[4:0]
+    mov     eax,  -1         # [LEAF_Bh] Materialize all-ones mask in EAX.
+    jmp 2b                   # [LEAF_Bh] Reuse SHL logic of Leaf 80000008
+.Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_01:
+    callq   nabla_cpuid_x86_is_leaf_01_supported
+    jz  1b                   # Mask not detectable; Return all-ones mask
+    xor     eax,  eax        # [LEAF_1h] Materialize all-zeroes mask
+    test    edx,  1<<28      # [LEAF_1h] Check if CPUID.1.EDX[HTT] bit set (possibly multi-core)
+    jz  0b                   # [LEAF_1h] HTT unset; Must be 1C/1T; return all-zero mask
+    shr     esi,  16         # [LEAF_1h] nextPowerOf2(CPUID.1.EBX[23:16]) = Package APIC IDs
+    and     esi,  0xFF       # [LEAF_1h] ... continued
+    dec     esi              # [LEAF_1h] Decrement
+    jz  0b                   # [LEAF_1h] Was 1 APIC ID; Must be 1C/1T; return all-zero mask
+    mov     ecx,  esi        # [LEAF_1h] Place biased logical core count in ECX
+    not     eax              # [LEAF_1h] Materialize all-ones (-1) from all-zeroes (0)
+    jmp 4b                   # [LEAF_1h] Reuse LZCNT logic of Leaf 80000008
+
+
+#
+# Nabla CPUID x86 APIC ID Mask Package
+#
+# Returns the APIC ID mask for packages (every bit above the logical processor)
+#
+#     uint32_t nabla_cpuid_x86_apicid_mask_package(void);
+#
+.globl nabla_cpuid_x86_apicid_mask_package
+nabla_cpuid_x86_apicid_mask_package:
+    callq nabla_cpuid_x86_apicid_mask_core_logical
+    not   eax
+    retq
+
+
+#
+# Nabla CPUID x86 APIC ID Mask SMT
+#
+#     uint32_t nabla_cpuid_x86_apicid_mask_smt(void);
+#
+.globl nabla_cpuid_x86_apicid_mask_smt
+nabla_cpuid_x86_apicid_mask_smt:
+    callq   nabla_cpuid_x86_is_leaf_0b_supported
+    jz 0f             # If Extended Topology Enumeration Leaf not available, mask=0
+    xor     eax,  eax # [LEAF_Bh] Prepare Indeterminate SMT Mask
+    test    esi,  esi # [LEAF_Bh] Test if LogicalProcessorCount > 0.
+    jz 0f             # [LEAF_Bh] ... if not usable, return 0
+    push    rbx       # [LEAF_Bh] Save RBX
+    mov     ecx,  edi # [LEAF_Bh] Prepare shift count from CPUID.11.EAX[4:0]
+    mov     ebx,  1   # [LEAF_Bh] Begin creating SMT mask
+    shl     ebx,  cl  # [LEAF_Bh] Compute 1<<CPUID.11.EAX[4:0]
+    dec     ebx       # [LEAF_Bh] -1 sets all bits below bit CPUID.11.EAX[4:0]
+    callq   nabla_cpuid_x86_apicid_mask_core_logical
+    and     eax,  ebx # [LEAF_Bh] SMT mask is strict subset of thread mask
+    popq    rbx       # [LEAF_Bh] Restore RBX
+0:  retq              # Return
+
+
+#
+# Nabla CPUID x86 APIC ID Mask Physical Core within package
+#
+# Returns the APIC ID mask for *physical* cores, excluding the thread sub-ID.
+#
+#     uint32_t nabla_cpuid_x86_apicid_mask_core_physical(void);
+#
+.globl nabla_cpuid_x86_apicid_mask_core_physical
+nabla_cpuid_x86_apicid_mask_core_physical:
+    callq nabla_cpuid_x86_apicid_mask_smt
+    pushq rax
+    callq nabla_cpuid_x86_apicid_mask_core_logical
+    popq  rcx
+    xor   eax,  ecx   # Exclude SMT bits from logical core mask to get physical core mask
+    retq
+
+
+#
+# Nabla CPUID x86 APIC ID Mask Last-Level Cache within package
+#
+# Returns the APIC ID mask for the last-level cache ID within a package.
+# On AMD and Hygon CPUs, returns the logical-OR of the CCD and CCX masks.
+# On CPUs other than AMD or Hygon (such as Intel), returns 0 (all cores within
+# a package assumed to share same cache).
+#
+#     uint32_t nabla_cpuid_x86_apicid_mask_core_llc(void);
+#
+.globl nabla_cpuid_x86_apicid_mask_core_llc
+nabla_cpuid_x86_apicid_mask_core_llc:
+    callq   nabla_cpuid_x86_is_amd_or_hygon
+    jz 0f
+    callq   nabla_cpuid_x86_apicid_mask_amd_ccd
+    pushq   rax
+    callq   nabla_cpuid_x86_apicid_mask_amd_ccx
+    popq    rcx
+    or      eax,  ecx
+0:  retq
+
+
+#
+# Nabla CPUID x86 APIC ID Mask AMD CCD and CCX within package
+#
+# Returns the APIC ID mask for the CCD ID within an AMD CPU package, and the
+# APIC ID mask for a CCX ID within a CCD.
+#
+# On CPUs other than AMD or Hygon (such as Intel), returns 0 (there are no CCDs/CCXes)
+#
+#     uint32_t nabla_cpuid_x86_apicid_mask_amd_ccd(void);
+#     uint32_t nabla_cpuid_x86_apicid_mask_amd_ccx(void);
+#
+.globl nabla_cpuid_x86_apicid_mask_amd_ccd
+.globl nabla_cpuid_x86_apicid_mask_amd_ccx
+nabla_cpuid_x86_apicid_mask_amd_ccd:
+    callq   nabla_cpuid_x86_is_amd_or_hygon
+    jz  0f
+    callq   nabla_cpuid_x86_family_model_stepping
+    mov     edx,  eax
+    xor     eax,  eax
+    cmp     edx,  FMS(17,00,0)      # Pre-Zen AMD CPUs
+    jl  0f
+    cmp     edx,  FMS(19,FF,F)      # Very new, unknown post-Zen 5 AMD CPU
+    jg  0f
+    callq   nabla_cpuid_x86_microarchitecture
+    mov     rdi,  rax
+    mov     eax,  -16
+    leaq    rdx, [rip+.Luarch_zen]  # Zen/Zen+: Bits 4 and up identify CCD within package.
+    cmpq    rdx,  rdi
+    je  1f
+    leaq    rdx, [rip+.Luarch_zenp] # Zen/Zen+: Bits 4 and up identify CCD within package.
+    cmpq    rdx,  rdi
+    je  1f
+    callq   nabla_cpuid_x86_apicid_mask_smt
+    not     eax                     # Zen 2/Zen 3 (and above?): 8 physical cores per CCD;
+    shl     eax,  3                 # SMT ID, if present, occupies additional low-order bits.
+1:  pushq   rax
+    callq   nabla_cpuid_x86_apicid_mask_core_logical
+    popq    rcx                     # CCD ID bits are top-level within a package, so mask
+    and     eax,  ecx               # them by the logical core mask.
+0:  retq
+
+nabla_cpuid_x86_apicid_mask_amd_ccx:
+    callq   nabla_cpuid_x86_is_amd_or_hygon
+    jz  0b
+    callq   nabla_cpuid_x86_microarchitecture
+    mov     rdi,  rax
+    mov     eax,  0b1000
+    leaq    rdx, [rip+.Luarch_zen]  # Zen/Zen+: Bit 3 identifies CCX within CCD.
+    cmpq    rdx,  rdi
+    je  1b
+    leaq    rdx, [rip+.Luarch_zenp] # Zen/Zen+: Bit 3 identifies CCX within CCD.
+    cmpq    rdx,  rdi
+    je  1b
+    xor     eax,  eax
+    leaq    rdx, [rip+.Luarch_zen2] # Not Zen/Zen+/Zen 2: No CCX distinct from CCD.
+    cmpq    rdx,  rdi
+    jne 0b
+    callq   nabla_cpuid_x86_apicid_mask_smt
+    inc     eax                     # Zen 2: 4 physical cores per CCD;
+    shl     eax,  2                 # SMT ID, if present, occupies additional low-order bits.
+    jmp 1b
+
+
+#
+# Nabla CPUID is AMD/Intel/Hygon
+#
+# NB: Hygon is a Chinese company that recently collaborated with AMD to produce
+#     a Family 18h (Zen-class) processor that could, theoretically, execute the
+#     same kernels as AMD Zen/Zen+ processors. On the off-chance this happens,
+#     support detecting this x86_64 vendor.
+#
+# HACK: [FOR INTERNAL ASM USE ONLY]
+# HACK: THIS FUNCTION HAS THE FOLLOWING SECRET RETURN VALUES
+# HACK:     EFLAGS.Z = !EAX
+#
+.globl nabla_cpuid_x86_is_amd
+.globl nabla_cpuid_x86_is_intel
+.globl nabla_cpuid_x86_is_hygon
+.globl nabla_cpuid_x86_is_amd_or_hygon
+nabla_cpuid_x86_is_amd:
+    mov     rsi,  rbx
+    xor     eax,  eax
+    cpuid
+    xor     eax,  eax
+    cmp     ebx,  'A' | 'u'<<8 | 't'<<16 | 'h'<<24; jne 0f  # Not AMD
+    cmp     edx,  'e' | 'n'<<8 | 't'<<16 | 'i'<<24; jne 0f  # Not AMD
+    cmp     ecx,  'c' | 'A'<<8 | 'M'<<16 | 'D'<<24; jne 0f  # Not AMD
+    inc     eax
+0:  mov     rbx,  rsi
+    test    eax,  eax
+    retq
+
+nabla_cpuid_x86_is_intel:
+    mov     rsi,  rbx
+    xor     eax,  eax
+    cpuid
+    xor     eax,  eax
+    cmp     ebx,  'G' | 'e'<<8 | 'n'<<16 | 'u'<<24; jne 0f  # Not Intel
+    cmp     edx,  'i' | 'n'<<8 | 'e'<<16 | 'I'<<24; jne 0f  # Not Intel
+    cmp     ecx,  'n' | 't'<<8 | 'e'<<16 | 'l'<<24; jne 0f  # Not Intel
+    inc     eax
+0:  mov     rbx,  rsi
+    test    eax,  eax
+    retq
+
+nabla_cpuid_x86_is_hygon:
+    mov     rsi,  rbx
+    xor     eax,  eax
+    cpuid
+    xor     eax,  eax
+    cmp     ebx,  'H' | 'y'<<8 | 'g'<<16 | 'o'<<24; jne 0f  # Not Hygon
+    cmp     edx,  'n' | 'G'<<8 | 'e'<<16 | 'n'<<24; jne 0f  # Not Hygon
+    cmp     ecx,  'u' | 'i'<<8 | 'n'<<16 | 'e'<<24; jne 0f  # Not Hygon
+    inc     eax
+0:  mov     rbx,  rsi
+    test    eax,  eax
+    retq
+
+nabla_cpuid_x86_is_amd_or_hygon:
+    callq   nabla_cpuid_x86_is_amd    # Unconditional straight call
+    jz      nabla_cpuid_x86_is_hygon  # Conditional tail-call
+    retq
+
+
+#
+# Nabla CPUID x86 microarchitecture
+#
+.globl nabla_cpuid_x86_microarchitecture
+nabla_cpuid_x86_microarchitecture:
+    pushq   rbx        # Save RBX
+    callq   nabla_cpuid_x86_is_amd_or_hygon
+    jnz   .Lnabla_cpuid_x86_microarchitecture_amd
+    callq   nabla_cpuid_x86_is_intel
+    jnz   .Lnabla_cpuid_x86_microarchitecture_intel
+    lea     rdi, [rip+.Luarch_unknown]
+0:  mov     rax,  rdi
+    popq    rbx        # Restore RBX
+    retq
+
+.Lnabla_cpuid_x86_microarchitecture_amd:
+    callq   nabla_cpuid_x86_family_model_stepping
+    mov     ecx,  eax
+    shr     ecx,  7
+    
+    # [FAMILY UNKNOWN]
+    lea     rdi, [rip+.Luarch_unknown_amd]
+    test    eax,  eax
+    jz  0b
+    
+    # [FAMILY <15h, Extremely old, 32-bit (<K8)]
+    cmp     eax,  FMS(15,00,0)
+    jl  0b
+    
+    # [FAMILY <17h, Old, 64-bit (<Zen)]
+    cmp     eax,  FMS(17,00,0)
+    jl  0b
+    
+    # [FAMILY  17h (Zen/Zen+/Zen 2)]
+    cmp     eax,  FMS(17,FF,F)
+    jg  2f
+    lea     rdi, [rip+.Luarch_zen2]
+    mov     edx,  0b11111111111111111111110011000000
+    #                                     //  //|||\
+    #                                    //  // ||\ Summit Ridge/Snowy Owl/Whitehaven/Naples, Zen
+    #                    FireFlight, Zen+   //  |\ Pinnacle Ridge/Colfax, Zen+
+    #                              Dali, Zen    | Raven Ridge/Great Horned Owl, Zen
+    #                            Picasso/Banded Kestrel, Zen+/Zen
+    shr     edx,  cl
+    test    edx,  1
+    jnz 0b
+    lea     rdi, [rip+.Luarch_zenp]
+    cmp     ecx,  FMS(17,18,0)>>7  #   Family 17h Model 18h is ambiguous.
+    je  1f
+    mov     edx,                        0b1100001010
+    #                                     //  //|||\
+    #                                    //  // ||\ Summit Ridge/Snowy Owl/Whitehaven/Naples, Zen
+    #                    FireFlight, Zen+   //  |\ Pinnacle Ridge/Colfax, Zen+
+    #                              Dali, Zen    | Raven Ridge/Great Horned Owl, Zen
+    #                            Picasso/Banded Kestrel, Zen+/Zen
+    shr     edx,  cl
+    test    edx,  1                #   Family 17h, Zen+?
+    jnz 0b
+    lea     rdi, [rip+.Luarch_zen] #   Family 17h, all other models assumed Zen.
+    jmp 0b
+    #
+    # Unfortunately, Banded Kestrel and Picasso cannot be distinguished by FMS,
+    # yet they differ in microarchitecture. Use core configuration instead:
+    #
+    #   - Banded Kestrel has 2C/4T only
+    #   - Picasso        has 4C/4T and upwards
+    #
+    # Use Leaf 0x0B and divide threads/package (Subleaf 1)
+    #                       by threads/core    (Subleaf 0).
+    # We know these are the only topology levels reported by CPUID because we
+    # can only get here if CPUID gives Family 17h Model 18h, and both Banded
+    # Kestrel and Picasso have symmetric core designs. Banded Kestrel is very
+    # unlikely; If there are any failures, assume Picasso, Zen+.
+    #
+1:  callq   nabla_cpuid_x86_is_leaf_0b_supported
+    lea     rdi, [rip+.Luarch_zenp]
+    jz 0b              # Leaf 0x0B unavailable
+    test    esi,  esi  # Check threads/core > 0
+    jz 0b              # Leaf 0x0B available but unusable
+    mov     eax,  11
+    mov     ecx,  1
+    cpuid
+    tzcnt   ecx,  esi  # Compute threads/core trailing-zero count
+    shr     ebx,  cl   # Divide  threads/package / threads/core -> cores/package
+    lea     rdi, [rip+.Luarch_zenp]
+    cmp     ebx,  2
+    jne 0b             # Leaf 0x0B unavailable or core count != 2, assume  Picasso, Zen+
+    lea     rdi, [rip+.Luarch_zen]
+    jmp 0b             # Leaf 0x0B available  and core count == 2, must be Banded Kestrel, Zen
+    
+    
+    # [FAMILY  18h, Hygon Dhyana (Zen)]
+2:  lea     rdi, [rip+.Luarch_zen]
+    cmp     eax,  FMS(18,FF,F)
+    jle 0b
+    
+    
+    # [FAMILY  19h (Zen 3/Zen 3+/Zen 4/Zen 4c/Zen 5/...)]
+    lea     rdi, [rip+.Luarch_unknown_amd]
+    cmp     eax,  FMS(19,FF,F)     # Too new, unknown processor models newer than Zen 4/Zen 5.
+    jg  0b
+    lea     rdi, [rip+.Luarch_zen3]
+    mov     edx,  0b00000000000000000000010001010011
+    #                                    /   / \  |\
+    #                                   /   /   \  \ Genesis Peak/Milan/Milan-X
+    #                            Cezanne   /     \ Chagall
+    #                                  Trento   Vermeer
+    shr     edx,  cl
+    test    edx,  1
+    jnz 0b
+    lea     rdi, [rip+.Luarch_zen3p]
+    mov     edx,  0b00000000000000000000000100000000
+    #                                      |
+    #                                  Rembrandt
+    shr     edx,  cl
+    test    edx,  1
+    jnz 0b
+    lea     rdi, [rip+.Luarch_zen4]
+    mov     edx,  0b00000000000000000101000000000100
+    #                                / \         |
+    #                         Phoenix  Raphael  Genoa
+    shr     edx,  cl
+    test    edx,  1
+    jnz 0b
+    lea     rdi, [rip+.Luarch_zen4c]
+    mov     edx,  0b00000000000100000000000000000000
+    #                          |
+    #                       Bergamo
+    shr     edx,  cl
+    test    edx,  1
+    jnz 0b
+    lea     rdi, [rip+.Luarch_zen5]
+    mov     edx,  0b00000000000000000000000000001000
+    #                                           |
+    #                                      Strix Point?
+    shr     edx,  cl
+    test    edx,  1
+    jnz 0b
+    lea     rdi, [rip+.Luarch_unknown_amd]
+    jmp 0b
+
+.Lnabla_cpuid_x86_microarchitecture_intel:
+    lea     rdi, [rip+.Luarch_unknown_intel]
+    mov     eax,  1
+    cpuid
+    lea     rdi, [rip+.Luarch_unknown_intel]
+    jmp 0b
 
 
 #
@@ -156,7 +957,7 @@ nabla_cpuid_x86:
 #     Bits:                  5    5    5    4    4   5
 #     Offset:               23   18   13    9    5   0
 #
-.global sgemm_mod_count
+.globl sgemm_mod_count
 sgemm_mod_count:
     mov     edi,   0b11011110111011100000000
     mov     edx,   (15<<23|4<<18|4<<13|4<<9|7<<5)|16
@@ -204,7 +1005,7 @@ sgemm_mod_count:
 # unchanged by balancing increments and decrements.
 #
 .align 256
-.global sgemm_bu_core_entry   # Purely for debug information, DO NOT CALL DIRECTLY!
+.globl sgemm_bu_core_entry    # Purely for debug information, DO NOT CALL DIRECTLY!
 sgemm_bu_core_entry:          # Purely for debug information, DO NOT CALL DIRECTLY!
 .Lsgemm_bu_core_entry_clr:                      # REGISTERS ON ENTRY:
                                                 #   RAX: &A[ m ][k=0]   A[320][ 64]
@@ -374,7 +1175,7 @@ sgemm_bu_core_entry:          # Purely for debug information, DO NOT CALL DIRECT
 #                        RDI,      RSI,      RDX,      RCX,    R8,          R9,                   XMM0,        XMM1
 # extern void sgemm_test(float* A, float* B, float* C, int K0, int counter, int prefetch_counter, float alpha, float beta);
 #
-.global sgemm_test
+.globl sgemm_test
 sgemm_test:
     pushq        rbx
     pushq        r10
