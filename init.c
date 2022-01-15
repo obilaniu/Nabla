@@ -262,21 +262,24 @@ int main(int argc, char* argv[]){
     
 #if 1
     const int EAX=0, EBX=1, ECX=2, EDX=3;
-    char     procbrand[64];
+    int       smt;
+    char      procbrand[64];
+    char      x2apicidbin[33];
+    uint32_t  initapicid, x2apicid, x2apicidsupport;
+    uint32_t  masklvl, masksub, maskccx, maskccd,
+              masksmt, masklog, maskphy, maskpkg;
     nabla_cpuid_generic_t      manubrand;
     nabla_cpuid_0000000b_t     topoleaf;
     nabla_cpuid_80000001_amd_t featuresext;
     nabla_cpuid_80000008_amd_t leafx08;
     nabla_cpuid_8000001d_amd_t cachelv;
     nabla_cpuid_8000001e_amd_t extapicid;
-    if(!nabla_cpuid_x86_is_leaf_supported(1)){
-        fprintf(stderr, "No CPUID leaves!\n");
-        return 1;
-    }
-    if(!nabla_cpuid_x86_is_leaf_supported(0x80000001)){
-        fprintf(stderr, "No CPUID extended leaves!\n");
-        return 1;
-    }
+    
+    if(!nabla_cpuid_x86_is_leaf_supported(1))
+        return fprintf(stderr, "No CPUID leaves!\n"), 1;
+    if(!nabla_cpuid_x86_is_leaf_supported(0x80000001))
+        return fprintf(stderr, "No CPUID extended leaves!\n"), 1;
+    
     nabla_cpuid_x86(&manubrand,    0,          0, EAX);
     nabla_cpuid_x86(&featuresext,  0x80000001, 0, EAX);
     nabla_cpuid_x86(procbrand+ 0,  0x80000002, 0, EAX);
@@ -285,11 +288,20 @@ int main(int argc, char* argv[]){
     nabla_cpuid_x86(procbrand+48,  0x80000005, 0, EDX);
     nabla_cpuid_x86(&leafx08,      0x80000008, 0, EAX);
     nabla_cpuid_x86(&extapicid,    0x8000001E, 0, EAX);
-    uint32_t initapicid      = nabla_cpuid_x86_apicid_initial();
-    uint32_t x2apicid        = nabla_cpuid_x86_apicid_extended();
-    uint32_t x2apicidsupport = nabla_cpuid_x86_is_leaf_supported(0x0B) &&
-                               nabla_cpuid_x86(0, 0x0B, 0, EBX);
-    int smt = extapicid.threads_per_core > 0;
+    initapicid      = nabla_cpuid_x86_apicid_initial();
+    x2apicid        = nabla_cpuid_x86_apicid_extended();
+    x2apicidsupport = nabla_cpuid_x86_is_leaf_supported(0x0B) &&
+                      nabla_cpuid_x86(0, 0x0B, 0, EBX);
+    nabla_uint32tobin(x2apicidbin, x2apicid);
+    smt     = nabla_cpuid_x86_is_leaf_supported(0x8000001E) &&
+              extapicid.threads_per_core > 0;
+    masksmt = nabla_cpuid_x86_apicid_mask_smt();
+    masklog = nabla_cpuid_x86_apicid_mask_core_logical();
+    maskphy = nabla_cpuid_x86_apicid_mask_core_physical();
+    maskpkg = nabla_cpuid_x86_apicid_mask_package();
+    maskccx = nabla_cpuid_x86_apicid_mask_amd_ccx();
+    maskccd = nabla_cpuid_x86_apicid_mask_amd_ccd();
+    masksub = maskphy^maskccx^maskccd;
     
     fprintf(stdout,
             "Manufacturer Brand String:     %4.4s%4.4s%4.4s%s\n"
@@ -322,78 +334,78 @@ int main(int argc, char* argv[]){
             nabla_cpuid_x86_is_leaf_supported(0x80000000),
             smt+1, initapicid, x2apicid,
             x2apicidsupport ? " (x2APIC ID available)" : " (inferred as initial APIC ID)",
-            nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_smt()),
-            nabla_cpuid_x86_apicid_mask_smt(),
-            nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_core_logical()),
-            nabla_cpuid_x86_apicid_mask_core_logical(),
-            nabla_popcnt32(nabla_cpuid_x86_apicid_mask_core_logical()),
-            nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_core_physical()),
-            nabla_cpuid_x86_apicid_mask_core_physical(),
-            nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_package()),
-            nabla_cpuid_x86_apicid_mask_package());
+            nabla_pext32(x2apicid, masksmt), masksmt,
+            nabla_pext32(x2apicid, masklog), masklog, nabla_popcnt32(masklog),
+            nabla_pext32(x2apicid, maskphy), maskphy,
+            nabla_pext32(x2apicid, maskpkg), maskpkg);
     
     if(nabla_cpuid_x86_is_amd_or_hygon())
         fprintf(stdout,
                 "APIC AMD CCD ID:               %-10u (mask: %08x)\n"
                 "APIC AMD CCX ID:               %-10u (mask: %08x)\n",
-                nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_amd_ccd()),
-                nabla_cpuid_x86_apicid_mask_amd_ccd(),
-                nabla_pext32(x2apicid, nabla_cpuid_x86_apicid_mask_amd_ccx()),
-                nabla_cpuid_x86_apicid_mask_amd_ccx());
+                nabla_pext32(x2apicid, maskccd), maskccd,
+                nabla_pext32(x2apicid, maskccx), maskccx);
     
     if(nabla_cpuid_x86_is_leaf_supported(0x0B)){
         for(i=j=0; nabla_cpuid_x86(&topoleaf, 0x0B, i, 0),
                    topoleaf.level_type; i++,j=topoleaf.next_level_shift){
-            char x2apicidbin[33];
-            nabla_uint32tobin(x2apicidbin, x2apicid);
-            
             if(!i)
                 fprintf(stdout,
                         "PROCESSOR HIERARCHY\n"
                         "  TYPE   #PROCS  BITFIELD  SHIFT   X2APICID:---+---|---+---:---+---| = %u\n",
                         topoleaf.ext_apic_id);
             
-            {
-                fprintf(stdout,
-                        "  %-8s %4d  [%2d+:%-2d] %4d      %*.*s%*s = %u\n",
-                        (topoleaf.level_type == 1 ? "SMT"  : (
-                         topoleaf.level_type == 2 ? "Core" : "?")),
-                        topoleaf.logical_proc_count,
-                        j, topoleaf.next_level_shift-j,
-                        topoleaf.next_level_shift,
-                        32-j, topoleaf.next_level_shift-j,
-                        x2apicidbin+32-topoleaf.next_level_shift, j, "",
-                        (topoleaf.ext_apic_id & ~(~0<<topoleaf.next_level_shift)) >> j);
-            }
+            masklvl = (1U<<topoleaf.next_level_shift) - (1U<<j);
+            fprintf(stdout,
+                    "  %-8s %4d  [%2d+:%-2d] %4d      %*.*s%*s = %u\n",
+                    (topoleaf.level_type == 1 ? "SMT"  : (
+                     topoleaf.level_type == 2 ? "Core" : "?")),
+                    topoleaf.logical_proc_count,
+                    nabla_tzcnt32(masklvl),
+                    nabla_popcnt32(masklvl),
+                    topoleaf.next_level_shift,
+                    32-nabla_tzcnt32(masklvl),
+                    nabla_popcnt32(masklvl),
+                    x2apicidbin+nabla_lzcnt32(masklvl),
+                    nabla_tzcnt32(masklvl), "",
+                    nabla_pext32(x2apicid, masklvl));
             
-            if(topoleaf.level_type == 2 &&
-               nabla_cpuid_x86_is_amd_or_hygon()){
-                uint32_t maskccx = nabla_cpuid_x86_apicid_mask_amd_ccx();
-                uint32_t maskccd = nabla_cpuid_x86_apicid_mask_amd_ccd();
-                uint32_t masksub = nabla_cpuid_x86_apicid_mask_core_physical() ^ maskccx ^ maskccd;
-                
+            if(nabla_cpuid_x86_is_amd_or_hygon() &&
+               topoleaf.level_type == 2){
                 if(masksub && (maskccx || maskccd))
                     fprintf(stdout,
                             "  %-8s       [%2d+:%-2d]           %*.*s%*s = %u\n",
-                            "+SubCore", nabla_tzcnt32(masksub), nabla_popcnt32(masksub),
-                            32-nabla_tzcnt32(masksub), nabla_popcnt32(masksub),
-                            x2apicidbin+nabla_lzcnt32(masksub), nabla_tzcnt32(masksub), "",
+                            "+SubCore",
+                            nabla_tzcnt32(masksub),
+                            nabla_popcnt32(masksub),
+                            32-nabla_tzcnt32(masksub),
+                            nabla_popcnt32(masksub),
+                            x2apicidbin+nabla_lzcnt32(masksub),
+                            nabla_tzcnt32(masksub), "",
                             nabla_pext32(x2apicid, masksub));
                 
                 if(maskccx)
                     fprintf(stdout,
                             "  %-8s       [%2d+:%-2d]           %*.*s%*s = %u\n",
-                            "+CCX", nabla_tzcnt32(maskccx), nabla_popcnt32(maskccx),
-                            32-nabla_tzcnt32(maskccx), nabla_popcnt32(maskccx),
-                            x2apicidbin+nabla_lzcnt32(maskccx), nabla_tzcnt32(maskccx), "",
+                            "+CCX",
+                            nabla_tzcnt32(maskccx),
+                            nabla_popcnt32(maskccx),
+                            32-nabla_tzcnt32(maskccx),
+                            nabla_popcnt32(maskccx),
+                            x2apicidbin+nabla_lzcnt32(maskccx),
+                            nabla_tzcnt32(maskccx), "",
                             nabla_pext32(x2apicid, maskccx));
                 
                 if(maskccd)
                     fprintf(stdout,
                             "  %-8s       [%2d+:%-2d]           %*.*s%*s = %u\n",
-                            "+CCD", nabla_tzcnt32(maskccd), nabla_popcnt32(maskccd),
-                            32-nabla_tzcnt32(maskccd), nabla_popcnt32(maskccd),
-                            x2apicidbin+nabla_lzcnt32(maskccd), nabla_tzcnt32(maskccd), "",
+                            "+CCD",
+                            nabla_tzcnt32(maskccd),
+                            nabla_popcnt32(maskccd),
+                            32-nabla_tzcnt32(maskccd),
+                            nabla_popcnt32(maskccd),
+                            x2apicidbin+nabla_lzcnt32(maskccd),
+                            nabla_tzcnt32(maskccd), "",
                             nabla_pext32(x2apicid, maskccd));
             }
         }
