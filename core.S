@@ -263,7 +263,7 @@ nabla_pext32:
     not     esi              # Negative selector polarity (since no leading-ones count)
     lzcnt   ecx,  esi        # Count consecutive bits to copy from value
     not     esi              # Positive selector polarity
-    shld    eax,  edi, cl    # Shift in value bits into EAX from the right
+    shld    eax,  edi, cl    # Inject value bits into EAX from the right
     shl     edi,  cl         # Eject copied value bits out the top
     shl     esi,  cl         # Eject equal count of selector bits
     jnz 1b                   # Continue iterating if selector still non-zero.
@@ -334,9 +334,9 @@ nabla_popcnt32:
 #
 # Nabla CPUID Access Function
 #
-#      uint32_t nabla_cpuid_x86(uint32_t buf[4], uint32_t ECX, uint32_t EAX, int select)
+#      uint32_t nabla_cpuid_x86(uint32_t buf[4], uint32_t leaf, uint32_t subleaf, int select)
 #
-# Executes CPUID with register values ECX:EAX and writes result into buf if non-NULL.
+# Executes CPUID with register values EAX:ECX and writes result into buf if non-NULL.
 # The return value is one selected register from CPUID's output:
 #     EAX=0    EBX=1    ECX=2    EDX=3
 #
@@ -420,6 +420,34 @@ nabla_cpuid_x86_is_leaf_80000008_supported:
     mov     edi,  0x80000008
     jmp nabla_cpuid_x86_is_leaf_supported
 
+#
+##
+## INTEL SDM (8.6 DETECTING HARDWARE MULTI-THREADING SUPPORT AND TOPOLOGY):
+##
+##    Software can detect the availability of the CPUID extended topology
+##    enumeration leaf (0BH) by performing two steps:
+##
+##      - Check maximum input value for basic CPUID information by executing
+##        CPUID with EAX= 0. If CPUID.0H:EAX is greater than or equal or 11 (0BH),
+##        then proceed to next step,
+##      - Check CPUID.EAX=0BH, ECX=0H:EBX is non-zero.
+##
+##    If both of the above conditions are true, extended topology enumeration
+##    leaf is available. Note the presence of CPUID leaf 0BH in a processor does
+##    not guarantee support that the local APIC supports x2APIC.
+##    If CPUID.(EAX=0BH, ECX=0H):EBX returns zero and maximum input value for
+##    basic CPUID information is greater than 0BH, then CPUID.0BH leaf is not
+##    supported on that processor.
+##
+#
+nabla_cpuid_x86_is_leaf_0b_usable:
+    callq nabla_cpuid_x86_is_leaf_0b_supported
+    jz 0f
+    test    esi,  esi   # Leaf B only actually usable if subleaf 0 reports
+    setnz   al          # CPUID.11[ECX=0].EBX = threads/SMT != 0
+    and     eax,  1
+0:  retq
+
 
 #
 # Nabla CPUID x86 Display Family, Model, Stepping
@@ -480,53 +508,28 @@ nabla_cpuid_x86_family_model_stepping:
 
 #
 # Nabla CPUID x86 Initial APIC ID
+# Nabla CPUID x86 x2APIC ID
 #
 #     uint32_t nabla_cpuid_x86_apicid_initial(void);
+#     uint32_t nabla_cpuid_x86_apicid_extended(void);
 #
 # Returns 0 if Initial APIC ID cannot be detected.
+# Returns Init APIC ID if x2APIC ID cannot be detected but Initial APIC ID can be.
 #
 .globl nabla_cpuid_x86_apicid_initial
+.globl nabla_cpuid_x86_apicid_extended
+
 nabla_cpuid_x86_apicid_initial:
     callq   nabla_cpuid_x86_is_leaf_01_supported
     mov     eax,  esi
     shr     eax,  24
     retq
 
-
-#
-# Nabla CPUID x86 x2APIC ID
-#
-#     uint32_t nabla_cpuid_x86_apicid_extended(void);
-#
-# Returns Init APIC ID if x2APIC ID cannot be detected.
-#
-##
-## INTEL SDM (8.6 DETECTING HARDWARE MULTI-THREADING SUPPORT AND TOPOLOGY):
-##
-##    Software can detect the availability of the CPUID extended topology
-##    enumeration leaf (0BH) by performing two steps:
-##
-##      - Check maximum input value for basic CPUID information by executing
-##        CPUID with EAX= 0. If CPUID.0H:EAX is greater than or equal or 11 (0BH),
-##        then proceed to next step,
-##      - Check CPUID.EAX=0BH, ECX=0H:EBX is non-zero.
-##
-##    If both of the above conditions are true, extended topology enumeration
-##    leaf is available. Note the presence of CPUID leaf 0BH in a processor does
-##    not guarantee support that the local APIC supports x2APIC.
-##    If CPUID.(EAX=0BH, ECX=0H):EBX returns zero and maximum input value for
-##    basic CPUID information is greater than 0BH, then CPUID.0BH leaf is not
-##    supported on that processor.
-##
-#
-.globl nabla_cpuid_x86_apicid_extended
 nabla_cpuid_x86_apicid_extended:
-    callq   nabla_cpuid_x86_is_leaf_0b_supported
-    jz nabla_cpuid_x86_apicid_initial # If Extended Topology Enumeration Leaf not available, tail-call for Init APIC ID
-    test    esi,  esi                 # [LEAF_Bh] Test if LogicalProcessorCount > 0.
-    jz nabla_cpuid_x86_apicid_initial # [LEAF_Bh] ... if not usable, tail-call for Init APIC ID
-    mov     eax,  edx                 # [LEAF_Bh] Place x2APIC ID in EAX for return
-    retq                              # [LEAF_Bh] Return
+    callq   nabla_cpuid_x86_is_leaf_0b_usable
+    jz      nabla_cpuid_x86_apicid_initial # If Extended Topology Enumeration Leaf not available, tail-call for Init APIC ID
+    mov     eax,  edx                      # [LEAF_Bh] Place x2APIC ID in EAX for return
+    retq                                   # [LEAF_Bh] Return
 
 
 #
@@ -564,9 +567,7 @@ nabla_cpuid_x86_apicid_mask_core_logical:
                              # [LEAF_80000008h] HACK:  shift amount is guaranteed to be 0)
 0:  retq                     # Return
 .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_0b:
-    callq   nabla_cpuid_x86_is_leaf_0b_supported
-    jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_01
-    test    ebx,  ebx        # [LEAF_Bh] Check Leaf B usable
+    callq   nabla_cpuid_x86_is_leaf_0b_usable
     jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_01
     mov     rsi,  rbx        # [LEAF_Bh] Save RBX
     xor     ecx,  ecx        # [LEAF_Bh] Extended Topology Enumeration Subleaf select 0
@@ -608,8 +609,8 @@ nabla_cpuid_x86_apicid_mask_core_logical:
 #
 .globl nabla_cpuid_x86_apicid_mask_package
 nabla_cpuid_x86_apicid_mask_package:
-    callq nabla_cpuid_x86_apicid_mask_core_logical
-    not   eax
+    callq   nabla_cpuid_x86_apicid_mask_core_logical
+    not     eax
     retq
 
 
@@ -620,19 +621,15 @@ nabla_cpuid_x86_apicid_mask_package:
 #
 .globl nabla_cpuid_x86_apicid_mask_smt
 nabla_cpuid_x86_apicid_mask_smt:
-    callq   nabla_cpuid_x86_is_leaf_0b_supported
-    jz 0f             # If Extended Topology Enumeration Leaf not available, mask=0
-    xor     eax,  eax # [LEAF_Bh] Prepare Indeterminate SMT Mask
-    test    esi,  esi # [LEAF_Bh] Test if LogicalProcessorCount > 0.
-    jz 0f             # [LEAF_Bh] ... if not usable, return 0
-    push    rbx       # [LEAF_Bh] Save RBX
-    mov     ecx,  edi # [LEAF_Bh] Prepare shift count from CPUID.11.EAX[4:0]
-    mov     ebx,  1   # [LEAF_Bh] Begin creating SMT mask
-    shl     ebx,  cl  # [LEAF_Bh] Compute 1<<CPUID.11.EAX[4:0]
-    dec     ebx       # [LEAF_Bh] -1 sets all bits below bit CPUID.11.EAX[4:0]
+    callq   nabla_cpuid_x86_is_leaf_0b_usable
+    jz 0f             # If Extended Topology Enumeration Leaf not usable, mask=0
+    pushq   rdi       # [LEAF_Bh] Save RDI=CPUID.11.EAX
     callq   nabla_cpuid_x86_apicid_mask_core_logical
-    and     eax,  ebx # [LEAF_Bh] SMT mask is strict subset of thread mask
-    popq    rbx       # [LEAF_Bh] Restore RBX
+    popq    rcx       # [LEAF_Bh] Restore RCX=CPUID.11.EAX
+    mov     edx,  1   # [LEAF_Bh] Begin creating SMT mask
+    shl     edx,  cl  # [LEAF_Bh] Compute 1<<CPUID.11.EAX[4:0]
+    dec     edx       # [LEAF_Bh] -1 sets all bits below bit CPUID.11.EAX[4:0]
+    and     eax,  edx # [LEAF_Bh] SMT mask is strict subset of logical core mask
 0:  retq              # Return
 
 
@@ -690,25 +687,17 @@ nabla_cpuid_x86_apicid_mask_core_llc:
 .globl nabla_cpuid_x86_apicid_mask_amd_ccx
 nabla_cpuid_x86_apicid_mask_amd_ccd:
     callq   nabla_cpuid_x86_is_amd_or_hygon
-    jz  0f
-    callq   nabla_cpuid_x86_family_model_stepping
-    mov     edx,  eax
-    xor     eax,  eax
-    cmp     edx,  FMS(17,00,0)      # Pre-Zen AMD CPUs
-    jl  0f
-    cmp     edx,  FMS(19,FF,F)      # Very new, unknown post-Zen 5 AMD CPU
-    jg  0f
-    callq   nabla_cpuid_x86_microarchitecture
-    mov     rdi,  rax
-    mov     eax,  -16
-    leaq    rdx, [rip+.Luarch_zen]  # Zen/Zen+: Bits 4 and up identify CCD within package.
-    cmpq    rdx,  rdi
-    je  1f
-    leaq    rdx, [rip+.Luarch_zenp] # Zen/Zen+: Bits 4 and up identify CCD within package.
-    cmpq    rdx,  rdi
-    je  1f
-    callq   nabla_cpuid_x86_apicid_mask_smt
-    not     eax                     # Zen 2/Zen 3 (and above?): 8 physical cores per CCD;
+    jz  0f                          # Not AMD or Hygon; No concept of CCX or CCD.
+    callq   nabla_cpuid_x86_is_hygon_fam18h
+    mov     eax,  -16               # Hygon Dhyana/Zen: Bits 4 and up identify CCD within package.
+    jnz 1f
+    callq   nabla_cpuid_x86_is_amd_fam17h
+    jz  2f                          # AMD Zen 3 or newer, same logic as Zen 2.
+    callq   nabla_cpuid_x86_is_amd_fam17h_zen2
+    mov     eax,  -16               # AMD Zen/Zen+: Bits 4 and up identify CCD within package.
+    jz  1f
+2:  callq   nabla_cpuid_x86_apicid_mask_smt
+    not     eax                     # Zen 2/Zen 3 and newer: 3 ID bits for physical cores within CCD;
     shl     eax,  3                 # SMT ID, if present, occupies additional low-order bits.
 1:  pushq   rax
     callq   nabla_cpuid_x86_apicid_mask_core_logical
@@ -718,22 +707,17 @@ nabla_cpuid_x86_apicid_mask_amd_ccd:
 
 nabla_cpuid_x86_apicid_mask_amd_ccx:
     callq   nabla_cpuid_x86_is_amd_or_hygon
-    jz  0b
-    callq   nabla_cpuid_x86_microarchitecture
-    mov     rdi,  rax
+    jz  0b                          # Not AMD or Hygon: No concept of CCX or CCD.
+    callq   nabla_cpuid_x86_is_hygon_fam18h
+    mov     eax,  0b1000            # Hygon Dhyana/Zen: Bit 3 identifies CCX within CCD.
+    jnz 1b
+    callq   nabla_cpuid_x86_is_amd_fam17h
+    jz  0b                          # Not Hygon or AMD Zen/Zen+/Zen 2: No CCX distinct from CCD.
+    callq   nabla_cpuid_x86_is_amd_fam17h_zen2
     mov     eax,  0b1000
-    leaq    rdx, [rip+.Luarch_zen]  # Zen/Zen+: Bit 3 identifies CCX within CCD.
-    cmpq    rdx,  rdi
-    je  1b
-    leaq    rdx, [rip+.Luarch_zenp] # Zen/Zen+: Bit 3 identifies CCX within CCD.
-    cmpq    rdx,  rdi
-    je  1b
-    xor     eax,  eax
-    leaq    rdx, [rip+.Luarch_zen2] # Not Zen/Zen+/Zen 2: No CCX distinct from CCD.
-    cmpq    rdx,  rdi
-    jne 0b
+    jz  1b                          # AMD Zen/Zen+: Bit 3 identifies CCX within CCD.
     callq   nabla_cpuid_x86_apicid_mask_smt
-    inc     eax                     # Zen 2: 4 physical cores per CCD;
+    inc     eax                     # AMD Zen 2: 2 ID bits for physical cores within CCX;
     shl     eax,  2                 # SMT ID, if present, occupies additional low-order bits.
     jmp 1b
 
@@ -800,54 +784,104 @@ nabla_cpuid_x86_is_amd_or_hygon:
 
 
 #
-# Nabla CPUID x86 microarchitecture
+# Nabla CPUID is AMD Family 17h/17h Zen 2/18h/19h
 #
-.globl nabla_cpuid_x86_microarchitecture
-nabla_cpuid_x86_microarchitecture:
-    pushq   rbx        # Save RBX
-    callq   nabla_cpuid_x86_is_amd_or_hygon
-    jnz   .Lnabla_cpuid_x86_microarchitecture_amd
-    callq   nabla_cpuid_x86_is_intel
-    jnz   .Lnabla_cpuid_x86_microarchitecture_intel
-    lea     rdi, [rip+.Luarch_unknown]
-0:  mov     rax,  rdi
-    popq    rbx        # Restore RBX
-    retq
+# Family 17h marks out a CPU as an AMD Zen, Zen+ or Zen 2 CPU.
+# Family 18h marks out a CPU as a Hygon Dhyana Zen CPU.
+# Family 19h marks out a CPU as an AMD Zen 3 or newer CPU.
+#
+# HACK: [FOR INTERNAL ASM USE ONLY]
+# HACK: THIS FUNCTION HAS THE FOLLOWING SECRET RETURN VALUES
+# HACK:     EFLAGS.Z = !EAX
+#
+nabla_cpuid_x86_is_amd_fam17h:
+    callq   nabla_cpuid_x86_is_amd
+    jz 0f
+    callq   nabla_cpuid_x86_family
+    cmp     eax,  0x17
+    sete    al
+    and     eax,  1
+0:  retq
 
-.Lnabla_cpuid_x86_microarchitecture_amd:
-    callq   nabla_cpuid_x86_family_model_stepping
+nabla_cpuid_x86_is_amd_fam17h_zen2:
+    callq   nabla_cpuid_x86_is_amd_fam17h
+    jz 0f
+    callq   nabla_cpuid_x86_model
     mov     ecx,  eax
-    shr     ecx,  7
-    
-    # [FAMILY UNKNOWN]
-    lea     rdi, [rip+.Luarch_unknown_amd]
-    test    eax,  eax
-    jz  0b
-    
-    # [FAMILY <15h, Extremely old, 32-bit (<K8)]
-    cmp     eax,  FMS(15,00,0)
-    jl  0b
-    
-    # [FAMILY <17h, Old, 64-bit (<Zen)]
-    cmp     eax,  FMS(17,00,0)
-    jl  0b
-    
-    # [FAMILY  17h (Zen/Zen+/Zen 2)]
-    cmp     eax,  FMS(17,FF,F)
-    jg  2f
-    lea     rdi, [rip+.Luarch_zen2]
-    mov     edx,  0b11111111111111111111110011000000
+    shr     ecx,  3
+    mov     eax,  0b11111111111111111111110011000000
     #                                     //  //|||\
     #                                    //  // ||\ Summit Ridge/Snowy Owl/Whitehaven/Naples, Zen
     #                    FireFlight, Zen+   //  |\ Pinnacle Ridge/Colfax, Zen+
     #                              Dali, Zen    | Raven Ridge/Great Horned Owl, Zen
     #                            Picasso/Banded Kestrel, Zen+/Zen
-    shr     edx,  cl
-    test    edx,  1
-    jnz 0b
-    lea     rdi, [rip+.Luarch_zenp]
-    cmp     ecx,  FMS(17,18,0)>>7  #   Family 17h Model 18h is ambiguous.
-    je  1f
+    shr     eax,  cl
+    and     eax,  1
+0:  retq
+
+nabla_cpuid_x86_is_hygon_fam18h:
+    callq   nabla_cpuid_x86_is_hygon
+    jz 0f
+    callq   nabla_cpuid_x86_family
+    cmp     eax,  0x18
+    sete    al
+    and     eax,  1
+0:  retq
+
+nabla_cpuid_x86_is_amd_fam19h:
+    callq   nabla_cpuid_x86_is_amd
+    jz 0f
+    callq   nabla_cpuid_x86_family
+    cmp     eax,  0x19
+    sete    al
+    and     eax,  1
+0:  retq
+
+
+#
+# Nabla CPUID x86 microarchitecture
+#
+.globl nabla_cpuid_x86_microarchitecture
+nabla_cpuid_x86_microarchitecture:
+    callq   nabla_cpuid_x86_is_amd_or_hygon
+    jnz   .Lnabla_cpuid_x86_microarchitecture_amd_or_hygon
+    callq   nabla_cpuid_x86_is_intel
+    jnz   .Lnabla_cpuid_x86_microarchitecture_intel
+    lea     rax, [rip+.Luarch_unknown]
+    retq
+
+.Lnabla_cpuid_x86_microarchitecture_amd_or_hygon:
+    callq   nabla_cpuid_x86_is_amd_fam19h
+    jnz   .Lnabla_cpuid_x86_microarchitecture_amd_fam19h
+    callq   nabla_cpuid_x86_is_hygon_fam18h
+    jnz   .Lnabla_cpuid_x86_microarchitecture_hygon_fam18h
+    callq   nabla_cpuid_x86_is_amd_fam17h
+    jnz   .Lnabla_cpuid_x86_microarchitecture_amd_fam17h
+    lea     rax, [rip+.Luarch_unknown_amd]
+    retq
+
+.Lnabla_cpuid_x86_microarchitecture_amd_fam17h:
+    #
+    # Categorize AMD Family 17h microarchitectures.
+    #
+    # First eliminate the easy case, Zen 2.
+    # Then attempt to distinguish between Zen and Zen+.
+    #
+    # Unfortunately, Banded Kestrel and Picasso cannot be distinguished by FMS
+    # nor by package type, yet they differ in microarchitecture. Use core
+    # configuration instead:
+    #
+    #   - Banded Kestrel has 2C/4T only
+    #   - Picasso        has 4C/4T and upwards
+    #
+    callq   nabla_cpuid_x86_is_amd_fam17h_zen2
+    lea     rax, [rip+.Luarch_zen2]
+    jnz 0f
+    callq   nabla_cpuid_x86_model
+    mov     ecx,  eax
+    shr     ecx,  3
+    cmp     ecx,  0x18>>3          #   Family 17h Model 18h is ambiguous.
+    je    .Lnabla_cpuid_x86_microarchitecture_amd_fam17h_model18h
     mov     edx,                        0b1100001010
     #                                     //  //|||\
     #                                    //  // ||\ Summit Ridge/Snowy Owl/Whitehaven/Naples, Zen
@@ -856,51 +890,45 @@ nabla_cpuid_x86_microarchitecture:
     #                            Picasso/Banded Kestrel, Zen+/Zen
     shr     edx,  cl
     test    edx,  1                #   Family 17h, Zen+?
-    jnz 0b
-    lea     rdi, [rip+.Luarch_zen] #   Family 17h, all other models assumed Zen.
-    jmp 0b
+    lea     rax, [rip+.Luarch_zenp]
+    jnz 0f
+.Lnabla_cpuid_x86_microarchitecture_hygon_fam18h:
+    lea     rax, [rip+.Luarch_zen] #   Family 17h, all other models assumed Zen.
+0:  retq                           #   Family 18h is also always Hygon Dhyana Zen.
+
+.Lnabla_cpuid_x86_microarchitecture_amd_fam17h_model18h:
     #
-    # Unfortunately, Banded Kestrel and Picasso cannot be distinguished by FMS,
-    # yet they differ in microarchitecture. Use core configuration instead:
-    #
-    #   - Banded Kestrel has 2C/4T only
-    #   - Picasso        has 4C/4T and upwards
+    # Family 17h Model 18h distinguisher using physical core count.
     #
     # Use Leaf 0x0B and divide threads/package (Subleaf 1)
     #                       by threads/core    (Subleaf 0).
+    #
     # We know these are the only topology levels reported by CPUID because we
     # can only get here if CPUID gives Family 17h Model 18h, and both Banded
     # Kestrel and Picasso have symmetric core designs. Banded Kestrel is very
     # unlikely; If there are any failures, assume Picasso, Zen+.
     #
-1:  callq   nabla_cpuid_x86_is_leaf_0b_supported
-    lea     rdi, [rip+.Luarch_zenp]
-    jz 0b              # Leaf 0x0B unavailable
-    test    esi,  esi  # Check threads/core > 0
-    jz 0b              # Leaf 0x0B available but unusable
-    mov     eax,  11
-    mov     ecx,  1
-    cpuid
-    tzcnt   ecx,  esi  # Compute threads/core trailing-zero count
-    shr     ebx,  cl   # Divide  threads/package / threads/core -> cores/package
-    lea     rdi, [rip+.Luarch_zenp]
-    cmp     ebx,  2
-    jne 0b             # Leaf 0x0B unavailable or core count != 2, assume  Picasso, Zen+
-    lea     rdi, [rip+.Luarch_zen]
-    jmp 0b             # Leaf 0x0B available  and core count == 2, must be Banded Kestrel, Zen
-    
-    
-    # [FAMILY  18h, Hygon Dhyana (Zen)]
-2:  lea     rdi, [rip+.Luarch_zen]
-    cmp     eax,  FMS(18,FF,F)
-    jle 0b
-    
-    
-    # [FAMILY  19h (Zen 3/Zen 3+/Zen 4/Zen 4c/Zen 5/...)]
-    lea     rdi, [rip+.Luarch_unknown_amd]
-    cmp     eax,  FMS(19,FF,F)     # Too new, unknown processor models newer than Zen 4/Zen 5.
-    jg  0b
-    lea     rdi, [rip+.Luarch_zen3]
+    callq   nabla_cpuid_x86_is_leaf_0b_usable
+    lea     rax, [rip+.Luarch_zenp]
+    jz  0f             # Leaf 0x0B unusable, assume  Picasso, Zen+
+    pushq   rbx        # [LEAF_Bh] Save RBX
+    mov     eax,  11   # [LEAF_Bh] Extended Topology Enumeration Leaf select
+    mov     ecx,  1    # [LEAF_Bh] Extended Topology Enumeration Subleaf 1 select
+    cpuid              # [LEAF_Bh] Extended Topology Enumeration Subleaf 1 read
+    tzcnt   ecx,  esi  # [LEAF_Bh] Compute threads/core trailing-zero count from CPUID.11.[ECX=0].EBX[15:0]
+    shr     ebx,  cl   # [LEAF_Bh] Divide  threads/package / threads/core -> cores/package
+    cmp     ebx,  2    # [LEAF_Bh] Compare against Banded Kestrel's physical core count.
+    popq    rbx        # [LEAF_Bh] Restore RBX
+    lea     rax, [rip+.Luarch_zenp]
+    jne 0f             # [LEAF_Bh] Core count != 2, assume  Picasso, Zen+
+    lea     rax, [rip+.Luarch_zen]
+0:  retq               # [LEAF_Bh] Core count == 2, must be Banded Kestrel, Zen
+
+.Lnabla_cpuid_x86_microarchitecture_amd_fam19h:
+    callq   nabla_cpuid_x86_model
+    mov     ecx,  eax
+    shr     ecx,  3
+    lea     rax, [rip+.Luarch_zen3]
     mov     edx,  0b00000000000000000000010001010011
     #                                    /   / \  |\
     #                                   /   /   \  \ Genesis Peak/Milan/Milan-X
@@ -908,44 +936,41 @@ nabla_cpuid_x86_microarchitecture:
     #                                  Trento   Vermeer
     shr     edx,  cl
     test    edx,  1
-    jnz 0b
-    lea     rdi, [rip+.Luarch_zen3p]
+    jnz 0f
+    lea     rax, [rip+.Luarch_zen3p]
     mov     edx,  0b00000000000000000000000100000000
     #                                      |
     #                                  Rembrandt
     shr     edx,  cl
     test    edx,  1
-    jnz 0b
-    lea     rdi, [rip+.Luarch_zen4]
+    jnz 0f
+    lea     rax, [rip+.Luarch_zen4]
     mov     edx,  0b00000000000000000101000000000100
     #                                / \         |
     #                         Phoenix  Raphael  Genoa
     shr     edx,  cl
     test    edx,  1
-    jnz 0b
-    lea     rdi, [rip+.Luarch_zen4c]
+    jnz 0f
+    lea     rax, [rip+.Luarch_zen4c]
     mov     edx,  0b00000000000100000000000000000000
     #                          |
     #                       Bergamo
     shr     edx,  cl
     test    edx,  1
-    jnz 0b
-    lea     rdi, [rip+.Luarch_zen5]
+    jnz 0f
+    lea     rax, [rip+.Luarch_zen5]
     mov     edx,  0b00000000000000000000000000001000
     #                                           |
     #                                      Strix Point?
     shr     edx,  cl
     test    edx,  1
-    jnz 0b
-    lea     rdi, [rip+.Luarch_unknown_amd]
-    jmp 0b
+    jnz 0f
+    lea     rax, [rip+.Luarch_unknown_amd]
+0:  retq
 
 .Lnabla_cpuid_x86_microarchitecture_intel:
-    lea     rdi, [rip+.Luarch_unknown_intel]
-    mov     eax,  1
-    cpuid
-    lea     rdi, [rip+.Luarch_unknown_intel]
-    jmp 0b
+    lea     rax, [rip+.Luarch_unknown_intel]
+    retq
 
 
 #
