@@ -209,15 +209,17 @@
 .text
 .align 64
 
-#define K1     0b0000010000100001000100010000
-#define KMmask 0b0111100000111110000000000000
-#define KNmask 0b0000011111000001111000000000
-#define KKmask 0b0000000000000000000111100000
-#define KMmixm (25<<0|5<<10)
-#define KNmixm ((5<<0|1<<9)<<5)
-#define KMshft 23
-#define KNshft 19
-#define FMS(f,m,s) ((0x##f & 0xFF)<<12 | (0x##m & 0xFF)<<4 | (0x##s & 0xF))
+#define K1          0b00010000010100010
+#define KMmask      0b00001111100000000
+#define KNmask      0b11100000000000000
+#define KPmask      0b00000000001000000
+#define KKmask      0b00000000000011100
+#define KKMNPmask   (KMmask|KNmask|KPmask|KKmask)
+#define KMshft      1
+#define KNshft      7
+#define KPshft      0
+#define KKshft      4
+#define FMS(f,m,s)  ((0x##f & 0xFF)<<12 | (0x##m & 0xFF)<<4 | (0x##s & 0xF))
 
 
 #
@@ -332,16 +334,68 @@ nabla_popcnt32:
 
 
 #
+# Nabla RDTSC/RDTSCP/RDPID/RDPRU Access Functions
+#
+#      uint64_t nabla_x86_rdtsc()
+#      uint64_t nabla_x86_rdtscp()
+#      uint64_t nabla_x86_rdtscp_pid(uint32_t* p)
+#      uint64_t nabla_x86_rdpid()
+#      uint64_t nabla_x86_rdpru(uint64_t v)
+#
+# Execute RDTSC/RDTSCP/RDPID and returns result
+# Execute RDTSCP and save processor ID to p
+# Execute RDPRU  with RCX register value v and returns result.
+#
+.globl nabla_x86_rdtsc
+.globl nabla_x86_rdtscp
+.globl nabla_x86_rdtscp_pid
+.globl nabla_x86_rdpid
+.globl nabla_x86_rdpru
+
+nabla_x86_rdtsc:
+    rdtsc
+    shl     rdx,   32
+    or      rax,   rdx
+    retq
+
+nabla_x86_rdtscp:
+    rdtscp
+    shl     rdx,   32
+    or      rax,   rdx
+    test    rdi,   rdi
+    retq
+
+nabla_x86_rdtscp_pid:
+    rdtscp
+    shl     rdx,   32
+    or      rax,   rdx
+    test    rdi,   rdi
+    mov    [rdi],  ecx
+    retq
+
+nabla_x86_rdpid:
+    .byte 0xF3, 0x0F, 0xC7, 0xF8   # rdpid   rax
+    retq
+
+nabla_x86_rdpru:
+    mov     rcx,   rdi
+    .byte 0x0F, 0x01, 0xFD         # rdpru
+    shl     rdx,   32
+    or      rax,   rdx
+    retq
+
+
+#
 # Nabla CPUID Access Function
 #
-#      uint32_t nabla_cpuid_x86(uint32_t buf[4], uint32_t leaf, uint32_t subleaf, int select)
+#      uint32_t nabla_x86_cpuid(uint32_t buf[4], uint32_t leaf, uint32_t subleaf, int select)
 #
 # Executes CPUID with register values EAX:ECX and writes result into buf if non-NULL.
 # The return value is one selected register from CPUID's output:
 #     EAX=0    EBX=1    ECX=2    EDX=3
 #
-.globl nabla_cpuid_x86
-nabla_cpuid_x86:
+.globl nabla_x86_cpuid
+nabla_x86_cpuid:
     mov     r8d,  ecx
     mov     eax,  esi
     mov     ecx,  edx
@@ -366,7 +420,7 @@ nabla_cpuid_x86:
 #
 # Nabla CPUID x86 CPUID is leaf supported?
 #
-#     uint32_t nabla_cpuid_x86_is_leaf_supported(uint32_t leaf)
+#     uint32_t nabla_x86_cpuid_is_leaf_supported(uint32_t leaf)
 #
 # Returns 0 if unsupported, or the maximum supported leaf in the series
 # (standard or extended) if supported. If the leaf is supported, the
@@ -381,8 +435,8 @@ nabla_cpuid_x86:
 # HACK:     EDX      = CPUID.x.EDX
 # HACK:     EFLAGS.Z = !EAX
 #
-.globl nabla_cpuid_x86_is_leaf_supported
-nabla_cpuid_x86_is_leaf_supported:
+.globl nabla_x86_cpuid_is_leaf_supported
+nabla_x86_cpuid_is_leaf_supported:
     mov     rsi,  rbx  # Save RBX
     mov     eax,  edi
     and     eax,  1<<31
@@ -408,17 +462,17 @@ nabla_cpuid_x86_is_leaf_supported:
     xor     edx,  edx  #         EDX=CPUID.x.EDX=0
     retq               #         (Z already set to 1)
 
-nabla_cpuid_x86_is_leaf_01_supported:
+nabla_x86_cpuid_is_leaf_01_supported:
     mov     edi,  1
-    jmp nabla_cpuid_x86_is_leaf_supported
+    jmp nabla_x86_cpuid_is_leaf_supported
 
-nabla_cpuid_x86_is_leaf_0b_supported:
+nabla_x86_cpuid_is_leaf_0b_supported:
     mov     edi,  0x0b
-    jmp nabla_cpuid_x86_is_leaf_supported
+    jmp nabla_x86_cpuid_is_leaf_supported
 
-nabla_cpuid_x86_is_leaf_80000008_supported:
+nabla_x86_cpuid_is_leaf_80000008_supported:
     mov     edi,  0x80000008
-    jmp nabla_cpuid_x86_is_leaf_supported
+    jmp nabla_x86_cpuid_is_leaf_supported
 
 #
 ##
@@ -440,8 +494,8 @@ nabla_cpuid_x86_is_leaf_80000008_supported:
 ##    supported on that processor.
 ##
 #
-nabla_cpuid_x86_is_leaf_0b_usable:
-    callq nabla_cpuid_x86_is_leaf_0b_supported
+nabla_x86_cpuid_is_leaf_0b_usable:
+    callq nabla_x86_cpuid_is_leaf_0b_supported
     jz 0f
     test    esi,  esi   # Leaf B only actually usable if subleaf 0 reports
     setnz   al          # CPUID.11[ECX=0].EBX = threads/SMT != 0
@@ -465,28 +519,28 @@ nabla_cpuid_x86_is_leaf_0b_usable:
 #
 # Returns 0 if family, model or stepping cannot be detected.
 #
-.globl nabla_cpuid_x86_family
-.globl nabla_cpuid_x86_model
-.globl nabla_cpuid_x86_stepping
-.globl nabla_cpuid_x86_family_model_stepping
-nabla_cpuid_x86_family:
-    callq   nabla_cpuid_x86_family_model_stepping
+.globl nabla_x86_cpuid_family
+.globl nabla_x86_cpuid_model
+.globl nabla_x86_cpuid_stepping
+.globl nabla_x86_cpuid_family_model_stepping
+nabla_x86_cpuid_family:
+    callq   nabla_x86_cpuid_family_model_stepping
     shr     eax,  12
     retq
 
-nabla_cpuid_x86_model:
-    callq   nabla_cpuid_x86_family_model_stepping
+nabla_x86_cpuid_model:
+    callq   nabla_x86_cpuid_family_model_stepping
     shr     eax,  4
     and     eax,  0xFF
     retq
 
-nabla_cpuid_x86_stepping:
-    callq   nabla_cpuid_x86_family_model_stepping
+nabla_x86_cpuid_stepping:
+    callq   nabla_x86_cpuid_family_model_stepping
     and     eax,  0xF
     retq
 
-nabla_cpuid_x86_family_model_stepping:
-    callq   nabla_cpuid_x86_is_leaf_01_supported
+nabla_x86_cpuid_family_model_stepping:
+    callq   nabla_x86_cpuid_is_leaf_01_supported
     jz 0f
     mov     ecx,  edi
     and     ecx,  0x000FF
@@ -510,24 +564,24 @@ nabla_cpuid_x86_family_model_stepping:
 # Nabla CPUID x86 Initial APIC ID
 # Nabla CPUID x86 x2APIC ID
 #
-#     uint32_t nabla_cpuid_x86_apicid_initial(void);
-#     uint32_t nabla_cpuid_x86_apicid_extended(void);
+#     uint32_t nabla_x86_cpuid_apicid_initial(void);
+#     uint32_t nabla_x86_cpuid_apicid_extended(void);
 #
 # Returns 0 if Initial APIC ID cannot be detected.
 # Returns Init APIC ID if x2APIC ID cannot be detected but Initial APIC ID can be.
 #
-.globl nabla_cpuid_x86_apicid_initial
-.globl nabla_cpuid_x86_apicid_extended
+.globl nabla_x86_cpuid_apicid_initial
+.globl nabla_x86_cpuid_apicid_extended
 
-nabla_cpuid_x86_apicid_initial:
-    callq   nabla_cpuid_x86_is_leaf_01_supported
+nabla_x86_cpuid_apicid_initial:
+    callq   nabla_x86_cpuid_is_leaf_01_supported
     mov     eax,  esi
     shr     eax,  24
     retq
 
-nabla_cpuid_x86_apicid_extended:
-    callq   nabla_cpuid_x86_is_leaf_0b_usable
-    jz      nabla_cpuid_x86_apicid_initial # If Extended Topology Enumeration Leaf not available, tail-call for Init APIC ID
+nabla_x86_cpuid_apicid_extended:
+    callq   nabla_x86_cpuid_is_leaf_0b_usable
+    jz      nabla_x86_cpuid_apicid_initial # If Extended Topology Enumeration Leaf not available, tail-call for Init APIC ID
     mov     eax,  edx                      # [LEAF_Bh] Place x2APIC ID in EAX for return
     retq                                   # [LEAF_Bh] Return
 
@@ -535,7 +589,7 @@ nabla_cpuid_x86_apicid_extended:
 #
 # Nabla CPUID x86 APIC ID Mask Logical Core
 #
-#     uint32_t nabla_cpuid_x86_apicid_mask_core_logical(void);
+#     uint32_t nabla_x86_cpuid_apicid_mask_core_logical(void);
 #
 # Returns the APIC ID mask for *logical* cores, including the thread sub-ID if any.
 #
@@ -543,12 +597,12 @@ nabla_cpuid_x86_apicid_extended:
 #     assume all logical cores are part of the same package)
 #   - If package is 1C/1T, return all-zeroes mask.
 #
-.globl nabla_cpuid_x86_apicid_mask_core_logical
-nabla_cpuid_x86_apicid_mask_core_logical:
-    callq   nabla_cpuid_x86_is_amd_or_hygon
-    jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_0b
-    callq   nabla_cpuid_x86_is_leaf_80000008_supported
-    jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_0b
+.globl nabla_x86_cpuid_apicid_mask_core_logical
+nabla_x86_cpuid_apicid_mask_core_logical:
+    callq   nabla_x86_cpuid_is_amd_or_hygon
+    jz    .Lnabla_x86_cpuid_apicid_mask_core_logical_try_leaf_0b
+    callq   nabla_x86_cpuid_is_leaf_80000008_supported
+    jz    .Lnabla_x86_cpuid_apicid_mask_core_logical_try_leaf_0b
     xor     eax,  eax        # [LEAF_80000008h] Set mask to all-zeroes
     and     ecx,  0xF0FF     # [LEAF_80000008h] Clear everything except ApicIdSize and NT
     jz  0f                   # [LEAF_80000008h] ApicIdSize=0 && NT=0 -> 1C/1T, 0 APIC bits
@@ -566,9 +620,9 @@ nabla_cpuid_x86_apicid_mask_core_logical:
                              # [LEAF_80000008h] HACK: (if code falls through from above, the
                              # [LEAF_80000008h] HACK:  shift amount is guaranteed to be 0)
 0:  retq                     # Return
-.Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_0b:
-    callq   nabla_cpuid_x86_is_leaf_0b_usable
-    jz    .Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_01
+.Lnabla_x86_cpuid_apicid_mask_core_logical_try_leaf_0b:
+    callq   nabla_x86_cpuid_is_leaf_0b_usable
+    jz    .Lnabla_x86_cpuid_apicid_mask_core_logical_try_leaf_01
     mov     rsi,  rbx        # [LEAF_Bh] Save RBX
     xor     ecx,  ecx        # [LEAF_Bh] Extended Topology Enumeration Subleaf select 0
 5:  inc     ecx              # [LEAF_Bh] Extended Topology Enumeration Subleaf select increment
@@ -585,8 +639,8 @@ nabla_cpuid_x86_apicid_mask_core_logical:
     and     ecx,  0x1F       # [LEAF_Bh] Isolate CPUID.B.EAX[4:0]
     mov     eax,  -1         # [LEAF_Bh] Materialize all-ones mask in EAX.
     jmp 2b                   # [LEAF_Bh] Reuse SHL logic of Leaf 80000008
-.Lnabla_cpuid_x86_apicid_mask_core_logical_try_leaf_01:
-    callq   nabla_cpuid_x86_is_leaf_01_supported
+.Lnabla_x86_cpuid_apicid_mask_core_logical_try_leaf_01:
+    callq   nabla_x86_cpuid_is_leaf_01_supported
     jz  1b                   # Mask not detectable; Return all-ones mask
     xor     eax,  eax        # [LEAF_1h] Materialize all-zeroes mask
     test    edx,  1<<28      # [LEAF_1h] Check if CPUID.1.EDX[HTT] bit set (possibly multi-core)
@@ -605,11 +659,11 @@ nabla_cpuid_x86_apicid_mask_core_logical:
 #
 # Returns the APIC ID mask for packages (every bit above the logical processor)
 #
-#     uint32_t nabla_cpuid_x86_apicid_mask_package(void);
+#     uint32_t nabla_x86_cpuid_apicid_mask_package(void);
 #
-.globl nabla_cpuid_x86_apicid_mask_package
-nabla_cpuid_x86_apicid_mask_package:
-    callq   nabla_cpuid_x86_apicid_mask_core_logical
+.globl nabla_x86_cpuid_apicid_mask_package
+nabla_x86_cpuid_apicid_mask_package:
+    callq   nabla_x86_cpuid_apicid_mask_core_logical
     not     eax
     retq
 
@@ -617,14 +671,14 @@ nabla_cpuid_x86_apicid_mask_package:
 #
 # Nabla CPUID x86 APIC ID Mask SMT
 #
-#     uint32_t nabla_cpuid_x86_apicid_mask_smt(void);
+#     uint32_t nabla_x86_cpuid_apicid_mask_smt(void);
 #
-.globl nabla_cpuid_x86_apicid_mask_smt
-nabla_cpuid_x86_apicid_mask_smt:
-    callq   nabla_cpuid_x86_is_leaf_0b_usable
+.globl nabla_x86_cpuid_apicid_mask_smt
+nabla_x86_cpuid_apicid_mask_smt:
+    callq   nabla_x86_cpuid_is_leaf_0b_usable
     jz 0f             # If Extended Topology Enumeration Leaf not usable, mask=0
     pushq   rdi       # [LEAF_Bh] Save RDI=CPUID.11.EAX
-    callq   nabla_cpuid_x86_apicid_mask_core_logical
+    callq   nabla_x86_cpuid_apicid_mask_core_logical
     popq    rcx       # [LEAF_Bh] Restore RCX=CPUID.11.EAX
     mov     edx,  1   # [LEAF_Bh] Begin creating SMT mask
     shl     edx,  cl  # [LEAF_Bh] Compute 1<<CPUID.11.EAX[4:0]
@@ -638,13 +692,13 @@ nabla_cpuid_x86_apicid_mask_smt:
 #
 # Returns the APIC ID mask for *physical* cores, excluding the thread sub-ID.
 #
-#     uint32_t nabla_cpuid_x86_apicid_mask_core_physical(void);
+#     uint32_t nabla_x86_cpuid_apicid_mask_core_physical(void);
 #
-.globl nabla_cpuid_x86_apicid_mask_core_physical
-nabla_cpuid_x86_apicid_mask_core_physical:
-    callq nabla_cpuid_x86_apicid_mask_smt
+.globl nabla_x86_cpuid_apicid_mask_core_physical
+nabla_x86_cpuid_apicid_mask_core_physical:
+    callq nabla_x86_cpuid_apicid_mask_smt
     pushq rax
-    callq nabla_cpuid_x86_apicid_mask_core_logical
+    callq nabla_x86_cpuid_apicid_mask_core_logical
     popq  rcx
     xor   eax,  ecx   # Exclude SMT bits from logical core mask to get physical core mask
     retq
@@ -658,15 +712,15 @@ nabla_cpuid_x86_apicid_mask_core_physical:
 # On CPUs other than AMD or Hygon (such as Intel), returns 0 (all cores within
 # a package assumed to share same cache).
 #
-#     uint32_t nabla_cpuid_x86_apicid_mask_core_llc(void);
+#     uint32_t nabla_x86_cpuid_apicid_mask_core_llc(void);
 #
-.globl nabla_cpuid_x86_apicid_mask_core_llc
-nabla_cpuid_x86_apicid_mask_core_llc:
-    callq   nabla_cpuid_x86_is_amd_or_hygon
+.globl nabla_x86_cpuid_apicid_mask_core_llc
+nabla_x86_cpuid_apicid_mask_core_llc:
+    callq   nabla_x86_cpuid_is_amd_or_hygon
     jz 0f
-    callq   nabla_cpuid_x86_apicid_mask_amd_ccd
+    callq   nabla_x86_cpuid_apicid_mask_amd_ccd
     pushq   rax
-    callq   nabla_cpuid_x86_apicid_mask_amd_ccx
+    callq   nabla_x86_cpuid_apicid_mask_amd_ccx
     popq    rcx
     or      eax,  ecx
 0:  retq
@@ -680,43 +734,43 @@ nabla_cpuid_x86_apicid_mask_core_llc:
 #
 # On CPUs other than AMD or Hygon (such as Intel), returns 0 (there are no CCDs/CCXes)
 #
-#     uint32_t nabla_cpuid_x86_apicid_mask_amd_ccd(void);
-#     uint32_t nabla_cpuid_x86_apicid_mask_amd_ccx(void);
+#     uint32_t nabla_x86_cpuid_apicid_mask_amd_ccd(void);
+#     uint32_t nabla_x86_cpuid_apicid_mask_amd_ccx(void);
 #
-.globl nabla_cpuid_x86_apicid_mask_amd_ccd
-.globl nabla_cpuid_x86_apicid_mask_amd_ccx
-nabla_cpuid_x86_apicid_mask_amd_ccd:
-    callq   nabla_cpuid_x86_is_amd_or_hygon
+.globl nabla_x86_cpuid_apicid_mask_amd_ccd
+.globl nabla_x86_cpuid_apicid_mask_amd_ccx
+nabla_x86_cpuid_apicid_mask_amd_ccd:
+    callq   nabla_x86_cpuid_is_amd_or_hygon
     jz  0f                          # Not AMD or Hygon; No concept of CCX or CCD.
-    callq   nabla_cpuid_x86_is_hygon_fam18h
+    callq   nabla_x86_cpuid_is_hygon_fam18h
     mov     eax,  -16               # Hygon Dhyana/Zen: Bits 4 and up identify CCD within package.
     jnz 1f
-    callq   nabla_cpuid_x86_is_amd_fam17h
+    callq   nabla_x86_cpuid_is_amd_fam17h
     jz  2f                          # AMD Zen 3 or newer, same logic as Zen 2.
-    callq   nabla_cpuid_x86_is_amd_fam17h_zen2
+    callq   nabla_x86_cpuid_is_amd_fam17h_zen2
     mov     eax,  -16               # AMD Zen/Zen+: Bits 4 and up identify CCD within package.
     jz  1f
-2:  callq   nabla_cpuid_x86_apicid_mask_smt
+2:  callq   nabla_x86_cpuid_apicid_mask_smt
     not     eax                     # Zen 2/Zen 3 and newer: 3 ID bits for physical cores within CCD;
     shl     eax,  3                 # SMT ID, if present, occupies additional low-order bits.
 1:  pushq   rax
-    callq   nabla_cpuid_x86_apicid_mask_core_logical
+    callq   nabla_x86_cpuid_apicid_mask_core_logical
     popq    rcx                     # CCD ID bits are top-level within a package, so mask
     and     eax,  ecx               # them by the logical core mask.
 0:  retq
 
-nabla_cpuid_x86_apicid_mask_amd_ccx:
-    callq   nabla_cpuid_x86_is_amd_or_hygon
+nabla_x86_cpuid_apicid_mask_amd_ccx:
+    callq   nabla_x86_cpuid_is_amd_or_hygon
     jz  0b                          # Not AMD or Hygon: No concept of CCX or CCD.
-    callq   nabla_cpuid_x86_is_hygon_fam18h
+    callq   nabla_x86_cpuid_is_hygon_fam18h
     mov     eax,  0b1000            # Hygon Dhyana/Zen: Bit 3 identifies CCX within CCD.
     jnz 1b
-    callq   nabla_cpuid_x86_is_amd_fam17h
+    callq   nabla_x86_cpuid_is_amd_fam17h
     jz  0b                          # Not Hygon or AMD Zen/Zen+/Zen 2: No CCX distinct from CCD.
-    callq   nabla_cpuid_x86_is_amd_fam17h_zen2
+    callq   nabla_x86_cpuid_is_amd_fam17h_zen2
     mov     eax,  0b1000
     jz  1b                          # AMD Zen/Zen+: Bit 3 identifies CCX within CCD.
-    callq   nabla_cpuid_x86_apicid_mask_smt
+    callq   nabla_x86_cpuid_apicid_mask_smt
     inc     eax                     # AMD Zen 2: 2 ID bits for physical cores within CCX;
     shl     eax,  2                 # SMT ID, if present, occupies additional low-order bits.
     jmp 1b
@@ -734,11 +788,11 @@ nabla_cpuid_x86_apicid_mask_amd_ccx:
 # HACK: THIS FUNCTION HAS THE FOLLOWING SECRET RETURN VALUES
 # HACK:     EFLAGS.Z = !EAX
 #
-.globl nabla_cpuid_x86_is_amd
-.globl nabla_cpuid_x86_is_intel
-.globl nabla_cpuid_x86_is_hygon
-.globl nabla_cpuid_x86_is_amd_or_hygon
-nabla_cpuid_x86_is_amd:
+.globl nabla_x86_cpuid_is_amd
+.globl nabla_x86_cpuid_is_intel
+.globl nabla_x86_cpuid_is_hygon
+.globl nabla_x86_cpuid_is_amd_or_hygon
+nabla_x86_cpuid_is_amd:
     mov     rsi,  rbx
     xor     eax,  eax
     cpuid
@@ -751,7 +805,7 @@ nabla_cpuid_x86_is_amd:
     test    eax,  eax
     retq
 
-nabla_cpuid_x86_is_intel:
+nabla_x86_cpuid_is_intel:
     mov     rsi,  rbx
     xor     eax,  eax
     cpuid
@@ -764,7 +818,7 @@ nabla_cpuid_x86_is_intel:
     test    eax,  eax
     retq
 
-nabla_cpuid_x86_is_hygon:
+nabla_x86_cpuid_is_hygon:
     mov     rsi,  rbx
     xor     eax,  eax
     cpuid
@@ -777,9 +831,9 @@ nabla_cpuid_x86_is_hygon:
     test    eax,  eax
     retq
 
-nabla_cpuid_x86_is_amd_or_hygon:
-    callq   nabla_cpuid_x86_is_amd    # Unconditional straight call
-    jz      nabla_cpuid_x86_is_hygon  # Conditional tail-call
+nabla_x86_cpuid_is_amd_or_hygon:
+    callq   nabla_x86_cpuid_is_amd    # Unconditional straight call
+    jz      nabla_x86_cpuid_is_hygon  # Conditional tail-call
     retq
 
 
@@ -794,19 +848,19 @@ nabla_cpuid_x86_is_amd_or_hygon:
 # HACK: THIS FUNCTION HAS THE FOLLOWING SECRET RETURN VALUES
 # HACK:     EFLAGS.Z = !EAX
 #
-nabla_cpuid_x86_is_amd_fam17h:
-    callq   nabla_cpuid_x86_is_amd
+nabla_x86_cpuid_is_amd_fam17h:
+    callq   nabla_x86_cpuid_is_amd
     jz 0f
-    callq   nabla_cpuid_x86_family
+    callq   nabla_x86_cpuid_family
     cmp     eax,  0x17
     sete    al
     and     eax,  1
 0:  retq
 
-nabla_cpuid_x86_is_amd_fam17h_zen2:
-    callq   nabla_cpuid_x86_is_amd_fam17h
+nabla_x86_cpuid_is_amd_fam17h_zen2:
+    callq   nabla_x86_cpuid_is_amd_fam17h
     jz 0f
-    callq   nabla_cpuid_x86_model
+    callq   nabla_x86_cpuid_model
     mov     ecx,  eax
     shr     ecx,  3
     mov     eax,  0b11111111111111111111110011000000
@@ -819,19 +873,19 @@ nabla_cpuid_x86_is_amd_fam17h_zen2:
     and     eax,  1
 0:  retq
 
-nabla_cpuid_x86_is_hygon_fam18h:
-    callq   nabla_cpuid_x86_is_hygon
+nabla_x86_cpuid_is_hygon_fam18h:
+    callq   nabla_x86_cpuid_is_hygon
     jz 0f
-    callq   nabla_cpuid_x86_family
+    callq   nabla_x86_cpuid_family
     cmp     eax,  0x18
     sete    al
     and     eax,  1
 0:  retq
 
-nabla_cpuid_x86_is_amd_fam19h:
-    callq   nabla_cpuid_x86_is_amd
+nabla_x86_cpuid_is_amd_fam19h:
+    callq   nabla_x86_cpuid_is_amd
     jz 0f
-    callq   nabla_cpuid_x86_family
+    callq   nabla_x86_cpuid_family
     cmp     eax,  0x19
     sete    al
     and     eax,  1
@@ -841,26 +895,26 @@ nabla_cpuid_x86_is_amd_fam19h:
 #
 # Nabla CPUID x86 microarchitecture
 #
-.globl nabla_cpuid_x86_microarchitecture
-nabla_cpuid_x86_microarchitecture:
-    callq   nabla_cpuid_x86_is_amd_or_hygon
-    jnz   .Lnabla_cpuid_x86_microarchitecture_amd_or_hygon
-    callq   nabla_cpuid_x86_is_intel
-    jnz   .Lnabla_cpuid_x86_microarchitecture_intel
+.globl nabla_x86_cpuid_microarchitecture
+nabla_x86_cpuid_microarchitecture:
+    callq   nabla_x86_cpuid_is_amd_or_hygon
+    jnz   .Lnabla_x86_cpuid_microarchitecture_amd_or_hygon
+    callq   nabla_x86_cpuid_is_intel
+    jnz   .Lnabla_x86_cpuid_microarchitecture_intel
     lea     rax, [rip+.Luarch_unknown]
     retq
 
-.Lnabla_cpuid_x86_microarchitecture_amd_or_hygon:
-    callq   nabla_cpuid_x86_is_amd_fam19h
-    jnz   .Lnabla_cpuid_x86_microarchitecture_amd_fam19h
-    callq   nabla_cpuid_x86_is_hygon_fam18h
-    jnz   .Lnabla_cpuid_x86_microarchitecture_hygon_fam18h
-    callq   nabla_cpuid_x86_is_amd_fam17h
-    jnz   .Lnabla_cpuid_x86_microarchitecture_amd_fam17h
+.Lnabla_x86_cpuid_microarchitecture_amd_or_hygon:
+    callq   nabla_x86_cpuid_is_amd_fam19h
+    jnz   .Lnabla_x86_cpuid_microarchitecture_amd_fam19h
+    callq   nabla_x86_cpuid_is_hygon_fam18h
+    jnz   .Lnabla_x86_cpuid_microarchitecture_hygon_fam18h
+    callq   nabla_x86_cpuid_is_amd_fam17h
+    jnz   .Lnabla_x86_cpuid_microarchitecture_amd_fam17h
     lea     rax, [rip+.Luarch_unknown_amd]
     retq
 
-.Lnabla_cpuid_x86_microarchitecture_amd_fam17h:
+.Lnabla_x86_cpuid_microarchitecture_amd_fam17h:
     #
     # Categorize AMD Family 17h microarchitectures.
     #
@@ -874,14 +928,14 @@ nabla_cpuid_x86_microarchitecture:
     #   - Banded Kestrel has 2C/4T only
     #   - Picasso        has 4C/4T and upwards
     #
-    callq   nabla_cpuid_x86_is_amd_fam17h_zen2
+    callq   nabla_x86_cpuid_is_amd_fam17h_zen2
     lea     rax, [rip+.Luarch_zen2]
     jnz 0f
-    callq   nabla_cpuid_x86_model
+    callq   nabla_x86_cpuid_model
     mov     ecx,  eax
     shr     ecx,  3
     cmp     ecx,  0x18>>3          #   Family 17h Model 18h is ambiguous.
-    je    .Lnabla_cpuid_x86_microarchitecture_amd_fam17h_model18h
+    je    .Lnabla_x86_cpuid_microarchitecture_amd_fam17h_model18h
     mov     edx,                        0b1100001010
     #                                     //  //|||\
     #                                    //  // ||\ Summit Ridge/Snowy Owl/Whitehaven/Naples, Zen
@@ -892,13 +946,13 @@ nabla_cpuid_x86_microarchitecture:
     test    edx,  1                #   Family 17h, Zen+?
     lea     rax, [rip+.Luarch_zenp]
     jnz 0f
-.Lnabla_cpuid_x86_microarchitecture_hygon_fam18h:
+.Lnabla_x86_cpuid_microarchitecture_hygon_fam18h:
     lea     rax, [rip+.Luarch_zen] #   Family 17h, all other models assumed Zen.
 0:  retq                           #   Family 18h is also always Hygon Dhyana Zen.
 
-.Lnabla_cpuid_x86_microarchitecture_amd_fam17h_model18h:
+.Lnabla_x86_cpuid_microarchitecture_amd_fam17h_model18h:
     #
-    # Family 17h Model 18h distinguisher using physical core count.
+    # Family 17h Model 18h distinguisher using physical core count.Ey
     #
     # Use Leaf 0x0B and divide threads/package (Subleaf 1)
     #                       by threads/core    (Subleaf 0).
@@ -908,7 +962,7 @@ nabla_cpuid_x86_microarchitecture:
     # Kestrel and Picasso have symmetric core designs. Banded Kestrel is very
     # unlikely; If there are any failures, assume Picasso, Zen+.
     #
-    callq   nabla_cpuid_x86_is_leaf_0b_usable
+    callq   nabla_x86_cpuid_is_leaf_0b_usable
     lea     rax, [rip+.Luarch_zenp]
     jz  0f             # Leaf 0x0B unusable, assume  Picasso, Zen+
     pushq   rbx        # [LEAF_Bh] Save RBX
@@ -924,8 +978,8 @@ nabla_cpuid_x86_microarchitecture:
     lea     rax, [rip+.Luarch_zen]
 0:  retq               # [LEAF_Bh] Core count == 2, must be Banded Kestrel, Zen
 
-.Lnabla_cpuid_x86_microarchitecture_amd_fam19h:
-    callq   nabla_cpuid_x86_model
+.Lnabla_x86_cpuid_microarchitecture_amd_fam19h:
+    callq   nabla_x86_cpuid_model
     mov     ecx,  eax
     shr     ecx,  3
     lea     rax, [rip+.Luarch_zen3]
@@ -968,7 +1022,7 @@ nabla_cpuid_x86_microarchitecture:
     lea     rax, [rip+.Luarch_unknown_amd]
 0:  retq
 
-.Lnabla_cpuid_x86_microarchitecture_intel:
+.Lnabla_x86_cpuid_microarchitecture_intel:
     lea     rax, [rip+.Luarch_unknown_intel]
     retq
 
@@ -977,24 +1031,25 @@ nabla_cpuid_x86_microarchitecture:
 # SGEMM Modulo-Decrement Test Function
 #
 # Coordinate System:
-#     Name:                 Mb : Nb : Ma : Na : k8 : 00000
-#     Max:                  15    4    4    4    7   0
-#     Bits:                  5    5    5    4    4   5
-#     Offset:               23   18   13    9    5   0
+#
+#     Name:                  n :  m :  p : k4 : 1
+#     Max:                   4   31    1   31   1
+#     Bits:                  3    6    2    6   1
+#     Offset:               15    9    7    1   0
 #
 .globl sgemm_mod_count
 sgemm_mod_count:
-    mov     edi,   0b11011110111011100000000
-    mov     edx,   (15<<23|4<<18|4<<13|4<<9|7<<5)|16
+    mov     edi,   (           (63^31) << 9 | (3^1)<< 7 | (63^31) << 1)
+    mov     edx,   ( 4 << 15 |     31  << 9 |    1 << 7 |     31  << 1)|1
     xor     eax,   eax
 0:
     # Independent count of iterations
     inc     eax
     
     # Modulo-bump
-    sub     edx,   32
+    sub     edx,   2
     mov     ecx,   edx
-    and     ecx,   0b10000100001000100010000
+    and     ecx,   0b000100000101000001
     lzcnt   ecx,   ecx
     mov     esi,   edi
     shl     esi,   cl
@@ -1005,192 +1060,6 @@ sgemm_mod_count:
     test    edx,   edx
     jge     0b
     ret
-
-
-#
-# SGEMM Basic Unit Kernel
-#
-# The SGEMM basic unit is a matrix multiplication of C(5,16) += A(5xK) x B(Kx16)
-# sliced out of C(320x320) += A(320xK) x B(Kx320) matrix tiles. There are 1280
-# basic units per tile operation. K is divisible by 4 such that 4 <= K <= 64.
-#
-# An SGEMM basic unit executes K sets of 10 FMAs. The K sets are broken into
-# four quarters, executed in alternate ascending-descending fashion:
-#
-#    Quarter 0:  k=0 mod 4;  pk=+1;  k+pk=1 mod 4;  iterate post k+=4
-#                exit: k+=pk, pk=+pk*2=+2, k == K+1
-#    Quarter 1:  k=1 mod 4;  pk=+2;  k+pk=3 mod 4;  iterate pre  k-=4
-#                exit: k+=pk, pk=-pk/2=-1, k ==   3
-#    Quarter 2:  k=3 mod 4;  pk=-1;  k+pk=2 mod 4;  iterate post k+=4
-#                exit: k+=pk, pk=+pk*2=-2, k == K+2
-#    Quarter 3:  k=2 mod 4;  pk=-2;  k+pk=0 mod 4;  iterate pre  k-=4
-#                exit: k+=pk, pk=-pk/2=+1, k ==   0
-#
-# The ascent-descend style has the advantage of leaving the input registers
-# unchanged by balancing increments and decrements.
-#
-.align 256
-.globl sgemm_bu_core_entry    # Purely for debug information, DO NOT CALL DIRECTLY!
-sgemm_bu_core_entry:          # Purely for debug information, DO NOT CALL DIRECTLY!
-.Lsgemm_bu_core_entry_clr:                      # REGISTERS ON ENTRY:
-                                                #   RAX: &A[ m ][k=0]   A[320][ 64]
-                                                #        The A-pointer **cannot** be moved from RAX!!!
-                                                #   RBX: &B[k=0][ n ]   B[ 64][320]
-                                                #   RCX: &C[ m ][ n ]   C[320][320]
-                                                #   RDX: +1*320*4
-                                                #   RDI: LinkRegister1
-                                                #   RSI: LinkRegister2
-                                                #   R8:  &A[ m ][k=K]
-                                                # REGISTERS CLOBBERED ON EXIT:
-                                                # ************ BU CORE FORWARD, PEELED ITER ************
-    vmovaps      ymm4,  [rbx]                   # Load B[k, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+32]                # Load B[k, n+8:n+16]
-    vbroadcastss ymm3,  [rax+1*64*4]            # Load A[m+1, k]
-    vmulps       ymm8,   ymm3,  ymm4            #  => acc10 += A[1,k] * B[k,n:n+8]
-    vmulps       ymm9,   ymm3,  ymm5            #  => acc11 += A[1,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax]                   # Load A[m+0, k]
-    vmulps       ymm6,   ymm3,  ymm4            #  => acc00 += A[0,k] * B[k,n:n+8]
-    vmulps       ymm7,   ymm3,  ymm5            #  => acc01 += A[0,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+3*64*4]            # Load A[m+3, k]
-    vmulps       ymm12,  ymm3,  ymm4            #  => acc30 += A[3,k] * B[k,n:n+8]
-    vmulps       ymm13,  ymm3,  ymm5            #  => acc31 += A[3,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+2*64*4]            # Load A[m+2, k]
-    vmulps       ymm10,  ymm3,  ymm4            #  => acc20 += A[2,k] * B[k,n:n+8]
-    vmulps       ymm11,  ymm3,  ymm5            #  => acc21 += A[2,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+4*64*4]            # Load A[m+4, k]
-    addq         rax,    4*4                    # Increment A-pointer (A[m][k+=4])
-    vmulps       ymm14,  ymm3,  ymm4            #  => acc40 += A[4,k] * B[k,n:n+8]
-    vmulps       ymm15,  ymm3,  ymm5            #  => acc41 += A[4,k] * B[k,n+8:n+16]
-    prefetcht0  [rbx+rdx]                       # Initiate prefetch of B-slice for next sub-BU
-    leaq         rbx,   [rbx+4*320*4]           # Increment B-pointer (B[k+=4][n], no rflags)
-    cmpq         rax,    r8                     # Exit if k >= K (equivalently: &A[k] >= &A[K])
-    jge  .Lsgemm_bu_core_forward_exit           # Single-iteration early-exit
-.align 128                                      # ************ BU CORE FORWARD, EXTREMELY HOT ************
-.Lsgemm_bu_core_entry_acc:                      # do{
-.Lsgemm_bu_core_forward:                        #
-    vmovaps      ymm4,  [rbx]                   #     Load B[k, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+32]                #     Load B[k, n+8:n+16]
-    vbroadcastss ymm3,  [rax+1*64*4]            #     Load A[m+1, k]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax]                   #     Load A[m+0, k]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+3*64*4]            #     Load A[m+3, k]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+2*64*4]            #     Load A[m+2, k]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+4*64*4]            #     Load A[m+4, k]
-    addq         rax,    4*4                    #     Increment A-pointer (A[m][k+=4])
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k] * B[k,n+8:n+16]
-    prefetcht0  [rbx+rdx]                       #     Initiate prefetch of B-slice for next sub-BU
-    leaq         rbx,   [rbx+4*320*4]           #     Increment B-pointer (B[k+=4][n], no rflags)
-    cmpq         rax,    r8                     #     Exit if k >= K (equivalently: &A[k] >= &A[K])
-    jnge .Lsgemm_bu_core_forward                # }while()
-.Lsgemm_bu_core_forward_exit:                   # ************ BU CORE FORWARD, EXTREMELY HOT ************
-    xor          al,     4                      # Begin fetching from A-pointer addresses corresponding to prefetch.
-                                                # (XOR AL, imm8 selected to save 2 bytes and fit within 2 L1i$ cachelines)
-    addq         rbx,    rdx                    # Begin fetching from previously prefetched B-pointer addresses.
-    addq         rdx,    rdx                    # Double the prefetch offset.
-.align 256                                      # ************ BU CORE BACKWARD, EXTREMELY HOT ************
-.Lsgemm_bu_core_backward:                       # do{
-    leaq         rbx,   [rbx-4*320*4]           #     Pre-decrement B-pointer (B[k-=4][n], no rflags)
-    vmovaps      ymm4,  [rbx]                   #     Load B[k, n  :n+ 8]
-    subq         rax,    4*4                    #     Pre-decrement A-pointer (A[m][k-=4])
-    vmovaps      ymm5,  [rbx+32]                #     Load B[k, n+8:n+16]
-    vbroadcastss ymm3,  [rax+1*64*4]            #     Load A[m+1, k]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax]                   #     Load A[m+0, k]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+3*64*4]            #     Load A[m+3, k]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+2*64*4]            #     Load A[m+2, k]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+4*64*4]            #     Load A[m+4, k]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k] * B[k,n+8:n+16]
-    prefetcht0  [rbx+rdx]                       #     Initiate prefetch of B-slice for next sub-BU
-    test         al,     0b11110000             #     Exit if k == 0 (equivalently: &A[k] == &A[0])
-    jne  .Lsgemm_bu_core_backward               # }while()
-                                                # ************ BU CORE BACKWARD, EXTREMELY HOT ************
-    addq         rbx,    rdx                    # Begin fetching from previously prefetched B-pointer addresses.
-    sar          rdx,    1                      # Halve  the prefetch offset.
-    neg          rdx                            # Negate the prefetch offset.
-.align 128
-    xor          al,     8                      # Begin fetching from A-pointer addresses corresponding to prefetch.
-                                                # (XOR AL, imm8 selected to save 2 bytes and fit within 2 L1i$ cachelines)
-    test         al,     0b00001000
-    jne  .Lsgemm_bu_core_forward                # If first half complete, begin second half.
-    jmp          rdi                            # RETURN (LINK REGISTER)
-.byte 0x66, 0x66, 0x66, 0x0F, 0x1F              # 11-byte-
-.byte 0x84, 0x00, 0x00, 0x00, 0x00, 0x00        # nop padding
-.byte 0x66, 0x66, 0x66, 0x0F, 0x1F              # 11-byte-
-.byte 0x84, 0x00, 0x00, 0x00, 0x00, 0x00        # nop padding
-.byte 0x66, 0x66, 0x66, 0x0F, 0x1F              # 11-byte-
-.byte 0x84, 0x00, 0x00, 0x00, 0x00, 0x00        # nop padding
-.Lsgemm_bu_eject_beta_one:                      # REGISTERS ON ENTRY:
-                                                #   RSI:  LinkRegister2
-                                                #   RCX:  &C[ m ][ n ]
-                                                #   YMM0: alpha
-                                                # REGISTERS CLOBBERED ON EXIT:
-                                                #   YMM6-YMM15
-                                                # ************ BU EJECTION (beta=1) ************
-    vfmadd213ps  ymm8,   ymm0, [rcx+1*320*4]    #   alpha * acc10 -->
-    vfmadd213ps  ymm9,   ymm0, [rcx+1*320*4+32] #   alpha * acc11 -->
-    vfmadd213ps  ymm6,   ymm0, [rcx]            #   alpha * acc00 -->
-    vfmadd213ps  ymm7,   ymm0, [rcx+32]         #   alpha * acc01 -->
-    vfmadd213ps  ymm12,  ymm0, [rcx+3*320*4]    #   alpha * acc30 -->
-    vfmadd213ps  ymm13,  ymm0, [rcx+3*320*4+32] #   alpha * acc31 -->
-    vfmadd213ps  ymm10,  ymm0, [rcx+2*320*4]    #   alpha * acc20 -->
-    vfmadd213ps  ymm11,  ymm0, [rcx+2*320*4+32] #   alpha * acc21 -->
-    vfmadd213ps  ymm14,  ymm0, [rcx+4*320*4]    #   alpha * acc40 -->
-    vfmadd213ps  ymm15,  ymm0, [rcx+4*320*4+32] #   alpha * acc41 -->
-.align 256
-.Lsgemm_bu_eject_alpha_one_beta_zero:           # REGISTERS ON ENTRY:
-                                                #   RSI:  LinkRegister2
-                                                #   RCX: &C[ m ][ n ]
-                                                # REGISTERS CLOBBERED ON EXIT:
-                                                #   (None)
-                                                # ************ BU EJECTION (alpha=1, beta=0) ************
-    vmovaps     [rcx+1*320*4],    ymm8          #                        C[1][n:n+8]
-    vmovaps     [rcx+1*320*4+32], ymm9          #                        C[1][n+8:n+16]
-    vmovaps     [rcx],            ymm6          #                        C[0][n:n+8]
-    vmovaps     [rcx+32],         ymm7          #                        C[0][n+8:n+16]
-    vmovaps     [rcx+3*320*4],    ymm12         #                        C[3][n:n+8]
-    vmovaps     [rcx+3*320*4+32], ymm13         #                        C[3][n+8:n+16]
-    vmovaps     [rcx+2*320*4],    ymm10         #                        C[2][n:n+8]
-    vmovaps     [rcx+2*320*4+32], ymm11         #                        C[2][n+8:n+16]
-    vmovaps     [rcx+4*320*4],    ymm14         #                        C[4][n:n+8]
-    vmovaps     [rcx+4*320*4+32], ymm15         #                        C[4][n+8:n+16]
-    jmp          rsi                            # RETURN (LINK REGISTER)
-.Lsgemm_bu_eject_beta_zero:                     # REGISTERS ON ENTRY:
-                                                #   RSI:  LinkRegister2
-                                                #   RCX:  &C[ m ][ n ]
-                                                #   YMM0: alpha
-                                                # REGISTERS CLOBBERED ON EXIT:
-                                                #   YMM5-YMM15
-                                                # ************ BU EJECTION (beta=0) ************
-    vmulps       ymm8,   ymm8,    ymm0          #   alpha * acc10 -->
-    vmulps       ymm9,   ymm9,    ymm0          #   alpha * acc11 -->
-    vmulps       ymm6,   ymm6,    ymm0          #   alpha * acc00 -->
-    vmulps       ymm7,   ymm7,    ymm0          #   alpha * acc01 -->
-    vmulps       ymm12,  ymm12,   ymm0          #   alpha * acc30 -->
-    vmulps       ymm13,  ymm13,   ymm0          #   alpha * acc31 -->
-    vmulps       ymm10,  ymm10,   ymm0          #   alpha * acc20 -->
-    vmulps       ymm11,  ymm11,   ymm0          #   alpha * acc21 -->
-    vmulps       ymm14,  ymm14,   ymm0          #   alpha * acc40 -->
-    vmulps       ymm15,  ymm15,   ymm0          #   alpha * acc41 -->
-    jmp .Lsgemm_bu_eject_alpha_one_beta_zero
-.align 128
-
-
 
 
 
@@ -1212,31 +1081,29 @@ sgemm_test:
     vzeroupper                                           # Clear any split-AVX state
     vbroadcastss ymm0,   xmm0                            # Splat alpha
     vbroadcastss ymm1,   xmm1                            # Splat beta
-    and          r8d,   -512                             # Ensure correctness of counter
-    or           r8d,    16                              # Ensure correctness of counter
-    or           r9d,    16                              # Ensure correctness of prefetch counter
-    #or           ecx,    16                              # Ensure correctness of K0 control constant
+    or           r8d,    2                               # Ensure correctness of counter
+    or           r9d,    2                               # Ensure correctness of prefetch counter
     mov          r12d,   ecx                             # Install R12 = K0 control constant
-    not          ecx
-    and          ecx,    0b011100000
-    or           r8d,    ecx                             # Copy ~k from K0 into counter
     mov          r13,    rdi                             # Install R13 = A-base-pointer
     mov          r14,    rsi                             # Install R14 = B-base-pointer
     mov          r15,    rdx                             # Install R15 = C-base-pointer
     
-    mov          eax,    r8d                             # = CURRENT COUNTER
-    and          eax,            KMmask
-    imul         eax,    eax,    KMmixm
-    shr          eax,            KMshft                  # = m
-    shl          eax,    8                               # = m*64*sizeof(float)
-    addq         rax,    r13                             # = &A[m,0]
+    mov          ecx,    r8d                             # = NEXT COUNTER
+    and          ecx,           KNmask                   # = (n/32 << 14) = (n << 9)
+    shr          ecx,           KNshft                   # = (n << 2) = n*sizeof(float)
     
-    mov          ebx,    r8d                             # = CURRENT COUNTER
-    and          ebx,            KNmask
-    imul         ebx,    ebx,    KNmixm
-    shr          ebx,            KNshft                  # = n
-    shl          ebx,    2                               # = n*sizeof(float)
-    addq         rbx,    r14                             # = &B[0,n]
+    mov          esi,    r8d                             # = NEXT COUNTER
+    and          esi,           KPmask                   # = (n&16) << 2
+    shr          esi,           KPshft                   # = (n&16) << 2 = (n&16)*sizeof(float)
+    add          ecx,    esi                             # = (n+p)*sizeof(float)
+    
+    mov          esi,    r8d                             # = NEXT COUNTER
+    and          esi,           KMmask                   # = (m/5 << 8)
+    shl          esi,           2-KMshft                 # = (m/5 << 9) = m/5*128*sizeof(float)
+    lea          esi,   [esi+esi*4]                      # = m*128*sizeof(float)
+    
+    leaq         rax,   [r13+rsi]                        # Install A-pointer
+    leaq         rbx,   [r14+rcx]                        # Install B-pointer
     
     leaq         r10,   [rip+0f]                         # Install return pointer
     vxorps       ymm6,   ymm6,   ymm6
@@ -1250,7 +1117,7 @@ sgemm_test:
     vxorps       ymm14,  ymm14,  ymm14
     vxorps       ymm15,  ymm15,  ymm15
     sfence
-    jmp .Lsgemm_zen2_bu_core_8x_unroll_accumulate        # EXECUTE
+    jmp .Lsgemm_zen2_bu_core_16x_unroll_accumulate       # EXECUTE
 0:  sfence
     vzeroall
     popq         r15
@@ -1385,373 +1252,629 @@ sgemm_test:
 #                         #      r13:    beta << 32 | alpha
 #                         #      r12:    
 #    vzeroall                                    #   Reinitialize entire vector register set.
+.align 64
+.Lsgemm_bu_eject_beta_one:                      # REGISTERS ON ENTRY:
+                                                #   RSI:  LinkRegister2
+                                                #   RCX:  &C[ m ][ n ]
+                                                #   YMM0: alpha
+                                                # REGISTERS CLOBBERED ON EXIT:
+                                                #   YMM6-YMM15
+                                                # ************ BU EJECTION (beta=1) ************
+    vfmadd213ps  ymm8,   ymm0, [rcx+1*320*4]    #   alpha * acc10 -->
+    vfmadd213ps  ymm9,   ymm0, [rcx+1*320*4+32] #   alpha * acc11 -->
+    vfmadd213ps  ymm6,   ymm0, [rcx]            #   alpha * acc00 -->
+    vfmadd213ps  ymm7,   ymm0, [rcx+32]         #   alpha * acc01 -->
+    vfmadd213ps  ymm12,  ymm0, [rcx+3*320*4]    #   alpha * acc30 -->
+    vfmadd213ps  ymm13,  ymm0, [rcx+3*320*4+32] #   alpha * acc31 -->
+    vfmadd213ps  ymm10,  ymm0, [rcx+2*320*4]    #   alpha * acc20 -->
+    vfmadd213ps  ymm11,  ymm0, [rcx+2*320*4+32] #   alpha * acc21 -->
+    vfmadd213ps  ymm14,  ymm0, [rcx+4*320*4]    #   alpha * acc40 -->
+    vfmadd213ps  ymm15,  ymm0, [rcx+4*320*4+32] #   alpha * acc41 -->
+.align 256
+.Lsgemm_bu_eject_alpha_one_beta_zero:           # REGISTERS ON ENTRY:
+                                                #   RSI:  LinkRegister2
+                                                #   RCX: &C[ m ][ n ]
+                                                # REGISTERS CLOBBERED ON EXIT:
+                                                #   (None)
+                                                # ************ BU EJECTION (alpha=1, beta=0) ************
+    vmovaps     [rcx+1*320*4],    ymm8          #                        C[1][n:n+8]
+    vmovaps     [rcx+1*320*4+32], ymm9          #                        C[1][n+8:n+16]
+    vmovaps     [rcx],            ymm6          #                        C[0][n:n+8]
+    vmovaps     [rcx+32],         ymm7          #                        C[0][n+8:n+16]
+    vmovaps     [rcx+3*320*4],    ymm12         #                        C[3][n:n+8]
+    vmovaps     [rcx+3*320*4+32], ymm13         #                        C[3][n+8:n+16]
+    vmovaps     [rcx+2*320*4],    ymm10         #                        C[2][n:n+8]
+    vmovaps     [rcx+2*320*4+32], ymm11         #                        C[2][n+8:n+16]
+    vmovaps     [rcx+4*320*4],    ymm14         #                        C[4][n:n+8]
+    vmovaps     [rcx+4*320*4+32], ymm15         #                        C[4][n+8:n+16]
+    jmp          rsi                            # RETURN (LINK REGISTER)
+.Lsgemm_bu_eject_beta_zero:                     # REGISTERS ON ENTRY:
+                                                #   RSI:  LinkRegister2
+                                                #   RCX:  &C[ m ][ n ]
+                                                #   YMM0: alpha
+                                                # REGISTERS CLOBBERED ON EXIT:
+                                                #   YMM5-YMM15
+                                                # ************ BU EJECTION (beta=0) ************
+    vmulps       ymm8,   ymm8,    ymm0          #   alpha * acc10 -->
+    vmulps       ymm9,   ymm9,    ymm0          #   alpha * acc11 -->
+    vmulps       ymm6,   ymm6,    ymm0          #   alpha * acc00 -->
+    vmulps       ymm7,   ymm7,    ymm0          #   alpha * acc01 -->
+    vmulps       ymm12,  ymm12,   ymm0          #   alpha * acc30 -->
+    vmulps       ymm13,  ymm13,   ymm0          #   alpha * acc31 -->
+    vmulps       ymm10,  ymm10,   ymm0          #   alpha * acc20 -->
+    vmulps       ymm11,  ymm11,   ymm0          #   alpha * acc21 -->
+    vmulps       ymm14,  ymm14,   ymm0          #   alpha * acc40 -->
+    vmulps       ymm15,  ymm15,   ymm0          #   alpha * acc41 -->
+    jmp .Lsgemm_bu_eject_alpha_one_beta_zero
+
+#
+# SGEMM, Idea 4
+#
+#     A[M=160][K=128]
+#     B[K=128][N=160]
+#     C[M=160][N=160]
+#
+#   - Dtype: float32
+#   - Basic unit: A{5,128} x B{128,16} = C{5,16} (Accumulator: 10x YMM registers)
+#     - Cost:
+#       - Insn:    10x128 = 1280 FMA (bottleneck; IPC throughput)
+#       - Insn:     7x128 =  896 LD  (total: 128*(16+5)*4  = 10.5    KB)
+#       - Insn:     5x2   =   10 ST  (total:  10*32 = 320B =  0.3125 KB, NT-hinted?)
+#       - Time: 640 cc
+#       - L1d occupancy:      128*(16+5)*4     = 10.5   KB   < 32 KB
+#       - L1d  -> Core Rd BW: 128*(16+5)*4/640 = 16.8   B/cc < 64 B/cc
+#       - Core -> L1d  Wr BW:        10*32/640 =  0.5   B/cc < 32 B/cc
+#
+#   - Pair: The execution of two side-by-side basic units
+#              |   B0  |   B1  |
+#        ------+-------+-------+
+#          A0  |  A0B0 |  A0B1 |
+#     requiring the same 128B supercacheline for B-slice data.
+#     - Cost:
+#       - Insn:   2x10x128 = 2560 FMA (bottleneck; IPC throughput)
+#       - Insn:    2x7x128 = 1792 LD  (total: 128*(32+5)*4  = 18.5    KB)
+#       - Insn:    2x5x2   =   20 ST  (total:  20*32 = 640B =  0.625  KB, NT-hinted?)
+#       - Time: 1280 cc
+#       - L1d occupancy:      128*(32+5)*4      = 18.5   KB   < 32 KB
+#       - L1d  -> Core Rd BW: 256*(16+5)*4/1280 = 16.8   B/cc < 64 B/cc
+#       - Core -> L1d  Wr BW:        20*32/1280 =  0.5   B/cc < 32 B/cc
+#
+#   - Panel: The execution of thirty-two pairs
+#              |   B0:B1  |
+#        ------+----------+
+#          A0  |   A0B01  |
+#          A1  |   A1B01  |
+#          A2  |   A2B01  |
+#          A3  |   A3B01  |
+#             .........
+#          A28 |  A28B01  |
+#          A29 |  A29B01  |
+#          A30 |  A30B01  |
+#          A31 |  A31B01  |
+#     reusing the same two B-slices until exhaustion of all A-slices.
+#     - Cost:
+#       - Insn:  81920 FMA, 57344 LD, 640 ST
+#       - Time:  40960 cc
+#       - L2 occupancy:       128*(5*32+32)*4       =  96     KB   < 512 KB
+#       - L2   -> L1d  Rd BW: 128*(5*32+32)*4/40960 =   2.4   B/cc < 32 B/cc
+#                                                     (+0.5 if consuming accumulators!)
+#       - L1d  -> L2   Wr BW:        32*20*32/40960 =   0.5   B/cc < 32 B/cc
+#
+#   - Superpanel: The execution of five side-by-side panels
+#              | B0:B1 | B2:B3 | B4:B5 | B6:B7 | B8:B9 |
+#        ------+-------+-------+-------+-------+-------+
+#        A0:A31|  AB01 |  AB32 |  AB45 |  AB67 |  AB89 |
+#     streaming 5 times all A-slices and loading once each pair of B-slices.
+#     - Cost:
+#       - Insn:  409600 FMA, 286720 LD, 3200 ST
+#       - Time:  204800 cc
+#       - L2 occupancy:       128*(5*32+5*32)*4        = 160     KB   < 512 KB
+#       - L2   -> L1d  Rd BW: 128*(5*32+5*32)*4/204800 =   0.8   B/cc < 32 B/cc
+#                                                        (+0.5 if consuming accumulators!)
+#       - L1d  -> L2   Wr BW:        5*32*20*32/204800 =   0.5   B/cc < 32 B/cc
+#
 
 
 #
-# SGEMM, Idea 3
-#
-#     A[M=400][K= 64]
-#     B[K= 64][N=400]
-#     C[M=400][N=400]
-#
-# 8x (
-#      1x PREFETCHT0 (B)
-#      7x LD
-#     10x FMA
-# )
-# 5x PREFETCHT0 (A)
-# 5x PREFETCHW  (C)
-# 1 TEST+BR
-#
-# Blocks:          M=5, N=16
-# Time:            40cc/iteration
-# Memory accesses: 8 full cachelines of B
-#                  5 half cachelines of A
-#                  5 full cachelines of C
-#
-# Jump Schedule:
-#  1.  5x:           N +=  16
-#  2.  5x:  M +=  5, N -=  80
-#  3.  5x:  M -= 25, N +=  80
-#  4. 16x:  M += 25, N -= 400
-
-
-#
-# SGEMM Basic Unit Kernel, 8x unrolled.
+# SGEMM Basic Unit Kernel, 16x unrolled.
 #
 # The SGEMM basic unit is a matrix multiplication of C(5,16) += A(5xK) x B(Kx16)
-# sliced out of C(400x400) += A(400xK) x B(Kx400) matrix tiles. There are 2000
-# basic units per tile operation. K is divisible by the unroll factor 8 such
-# that 8 <= K <= 64.
+# sliced out of C(160x160) += A(160xK) x B(Kx160) matrix tiles. There are 320
+# basic units per tile operation. K is divisible by the unroll factor 16 such
+# that 16 <= K <= 128.
 #
 # An SGEMM basic unit executes K sets of 10 FMAs.
 #
 .align 4096
-.globl sgemm_zen2_bu_core_8x_unroll_accumulate
-sgemm_zen2_bu_core_8x_unroll_accumulate:
-.Lsgemm_zen2_bu_core_8x_unroll_accumulate:      #************ BU CORE 8X UNROLL ************
-    #
-    #   MAIN ARITHMETIC BODY
-    #
-    # K=0
-    vmovaps      ymm5,  [rbx+0*400*4+32]        #     Load B[k+0, n+8:n+16]
-    vmovaps      ymm4,  [rbx+0*400*4]           #     Load B[k+0, n  :n+ 8]
-    vbroadcastss ymm3,  [rax+0*4+1*64*4]        #     Load A[m+1, k+0]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+0] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+0] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4]               #     Load A[m+0, k+0]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+0] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+0] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4+3*64*4]        #     Load A[m+3, k+0]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+0] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+0] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4+2*64*4]        #     Load A[m+2, k+0]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+0] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+0] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4+4*64*4]        #     Load A[m+4, k+0]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+0] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+0] * B[k,n+8:n+16]
-.Lsgemm_zen2_bu_core_8x_unroll_skip_first_iter:
-    # K=5
-    vmovaps      ymm4,  [rbx+5*400*4]           #     Load B[k+5, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+5*400*4+32]        #     Load B[k+5, n+8:n+16]
-    vbroadcastss ymm3,  [rax+5*4+1*64*4]        #     Load A[m+1, k+5]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+5] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+5] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+5*4]               #     Load A[m+0, k+5]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+5] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+5] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+5*4+3*64*4]        #     Load A[m+3, k+5]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+5] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+5] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+5*4+2*64*4]        #     Load A[m+2, k+5]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+5] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+5] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+5*4+4*64*4]        #     Load A[m+4, k+5]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+5] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+5] * B[k,n+8:n+16]
-    # K=2
-    vmovaps      ymm5,  [rbx+2*400*4+32]        #     Load B[k+2, n+8:n+16]
-    vmovaps      ymm4,  [rbx+2*400*4]           #     Load B[k+2, n  :n+ 8]
-    vbroadcastss ymm3,  [rax+2*4+1*64*4]        #     Load A[m+1, k+2]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+2] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+2] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+2*4]               #     Load A[m+0, k+2]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+2] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+2] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+2*4+3*64*4]        #     Load A[m+3, k+2]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+2] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+2] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+2*4+2*64*4]        #     Load A[m+2, k+2]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+2] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+2] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+2*4+4*64*4]        #     Load A[m+4, k+2]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+2] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+2] * B[k,n+8:n+16]
-    # K=7
-    vmovaps      ymm4,  [rbx+7*400*4]           #     Load B[k+7, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+7*400*4+32]        #     Load B[k+7, n+8:n+16]
-    vbroadcastss ymm3,  [rax+7*4+1*64*4]        #     Load A[m+1, k+7]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+7] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+7] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+7*4]               #     Load A[m+0, k+7]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+7] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+7] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+7*4+3*64*4]        #     Load A[m+3, k+7]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+7] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+7] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+7*4+2*64*4]        #     Load A[m+2, k+7]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+7] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+7] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+7*4+4*64*4]        #     Load A[m+4, k+7]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+7] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+7] * B[k,n+8:n+16]
-    # K=1
-    vmovaps      ymm5,  [rbx+1*400*4+32]        #     Load B[k+1, n+8:n+16]
-    vmovaps      ymm4,  [rbx+1*400*4]           #     Load B[k+1, n  :n+ 8]
-    vbroadcastss ymm3,  [rax+1*4+1*64*4]        #     Load A[m+1, k+1]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+1] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+1] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+1*4]               #     Load A[m+0, k+1]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+1] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+1] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+1*4+3*64*4]        #     Load A[m+3, k+1]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+1] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+1] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+1*4+2*64*4]        #     Load A[m+2, k+1]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+1] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+1] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+1*4+4*64*4]        #     Load A[m+4, k+1]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+1] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+1] * B[k,n+8:n+16]
-    # K=6
-    vmovaps      ymm4,  [rbx+6*400*4]           #     Load B[k+6, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+6*400*4+32]        #     Load B[k+6, n+8:n+16]
-    vbroadcastss ymm3,  [rax+6*4+1*64*4]        #     Load A[m+1, k+6]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+6] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+6] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+6*4]               #     Load A[m+0, k+6]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+6] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+6] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+6*4+3*64*4]        #     Load A[m+3, k+6]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+6] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+6] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+6*4+2*64*4]        #     Load A[m+2, k+6]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+6] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+6] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+6*4+4*64*4]        #     Load A[m+4, k+6]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+6] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+6] * B[k,n+8:n+16]
-    # K=3
-    vmovaps      ymm5,  [rbx+3*400*4+32]        #     Load B[k+3, n+8:n+16]
-    vmovaps      ymm4,  [rbx+3*400*4]           #     Load B[k+3, n  :n+ 8]
-    vbroadcastss ymm3,  [rax+3*4+1*64*4]        #     Load A[m+1, k+3]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+3] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+3] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+3*4]               #     Load A[m+0, k+3]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+3] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+3] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+3*4+3*64*4]        #     Load A[m+3, k+3]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+3] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+3] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+3*4+2*64*4]        #     Load A[m+2, k+3]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+3] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+3] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+3*4+4*64*4]        #     Load A[m+4, k+3]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+3] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+3] * B[k,n+8:n+16]
-    # K=4
-    vmovaps      ymm4,  [rbx+4*400*4]           #     Load B[k+4, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+4*400*4+32]        #     Load B[k+4, n+8:n+16]
-    vbroadcastss ymm3,  [rax+4*4+1*64*4]        #     Load A[m+1, k+4]
-    vfmadd231ps  ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+4] * B[k,n:n+8]
-    vfmadd231ps  ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+4] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+4*4]               #     Load A[m+0, k+4]
-    vfmadd231ps  ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+4] * B[k,n:n+8]
-    vfmadd231ps  ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+4] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+4*4+3*64*4]        #     Load A[m+3, k+4]
-    vfmadd231ps  ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+4] * B[k,n:n+8]
-    vfmadd231ps  ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+4] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+4*4+2*64*4]        #     Load A[m+2, k+4]
-    vfmadd231ps  ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+4] * B[k,n:n+8]
-    vfmadd231ps  ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+4] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+4*4+4*64*4]        #     Load A[m+4, k+4]
-    vfmadd231ps  ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+4] * B[k,n:n+8]
-    vfmadd231ps  ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+4] * B[k,n+8:n+16]
+.globl sgemm_zen2_bu_core_16x_unroll_accumulate
+sgemm_zen2_bu_core_16x_unroll_accumulate:
+.Lsgemm_zen2_bu_core_16x_unroll_accumulate:#************ BU CORE 16X UNROLL ************
+                                           #
+                                           #             MAIN ARITHMETIC BODY
+                                           #           REGISTERS USED: RAX, RBX, YMMx
+                                           # [ARITH] K=0
+    vmovaps      ymm4,  [rbx+0*160*4]      # [ARITH] Load B[k+0, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+0*160*4+32]   # [ARITH] Load B[k+0, n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+0*128*4]  # [ARITH] Load A[m+0, k+0]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+0] * B[k+0,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+0] * B[k+0,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+1*128*4]  # [ARITH] Load A[m+1, k+0]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+0] * B[k+0,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+0] * B[k+0,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+2*128*4]  # [ARITH] Load A[m+2, k+0]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+0] * B[k+0,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+0] * B[k+0,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+3*128*4]  # [ARITH] Load A[m+3, k+0]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+0] * B[k+0,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+0] * B[k+0,n+8:n+16]
+    vbroadcastss ymm3,  [rax+0*4+4*128*4]  # [ARITH] Load A[m+4, k+0]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+0] * B[k+0,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+0] * B[k+0,n+8:n+16]
+                                           # [ARITH] K=1
+    vmovaps      ymm4,  [rbx+1*160*4]      # [ARITH] Load B[k+1, n  :n+ 8]
+                                                                                                #
+                                                                                                #             PREFETCH POINTER A & B COMPUTATION &
+                                                                                                #             PREFETCH MODULO COUNTER (R9) DECREMENT &
+                                                                                                #             PREFETCH EXECUTE
+                                                                                                #
+                                                                                                #           REGISTERS I: R9, R12, R13, R14, R15
+                                                                                                #           REGISTERS O: R9
+                                                                                                #           REGISTERS available:   RCX, RDX, RDI, RSI, R10, R11
+                                                                                                #           REGISTERS unavailable: RAX, RBX, R8
+                                                                                                #
+                                                                                                # [PFTCH] A-current-pointer (float A[M=160][K=128])
+                                                                                                # [PFTCH] B-current-pointer (float B[K=128][N=160])
+                                                                                                # [PFTCH] C-current-pointer (float C[M=160][N=160])
+                                                                                                # [PFTCH] 
+                                                                                                # [PFTCH] Coordinate System:
+                                                                                                # [PFTCH] 
+                                                                                                # [PFTCH]     Name:                  n/32 : m/5 : n&16 : k/16 : 10
+                                                                                                # [PFTCH]     Max:                     4     31    1       7     2
+                                                                                                # [PFTCH]     Bits:                    3      6    2       4     2
+                                                                                                # [PFTCH]     Offset:                 14      8    6       2     0
+                                                                                                # [PFTCH] 
+                                                mov          edi,    r9d                        # [PFTCH] = PREFETCH COUNTER
+                                                and          edi,           KNmask              # [PFTCH] = (n/32 << 14) = (n << 9)
+                                                shr          edi,           KNshft              # [PFTCH] = (n << 2) = n*sizeof(float)
+    vmovaps      ymm5,  [rbx+1*160*4+32]   # [ARITH] Load B[k+1, n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*4+0*128*4]  # [ARITH] Load A[m+0, k+1]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+1] * B[k+1,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+1] * B[k+1,n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*4+1*128*4]  # [ARITH] Load A[m+1, k+1]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+1] * B[k+1,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+1] * B[k+1,n+8:n+16]
+                                                mov          esi,    r9d                        # [PFTCH] = PREFETCH COUNTER
+                                                and          esi,           KPmask              # [PFTCH] = (n&16) << 2
+                                                shr          esi,           KPshft              # [PFTCH] = (n&16) << 2 = (n&16)*sizeof(float)
+                                                add          edi,    esi                        # [PFTCH] = n*sizeof(float)
+                                                add          rdi,    r14                        # [PFTCH] = &B[0][n]    
+    vbroadcastss ymm3,  [rax+1*4+2*128*4]  # [ARITH] Load A[m+2, k+1]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+1] * B[k+1,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+1] * B[k+1,n+8:n+16]
+    vbroadcastss ymm3,  [rax+1*4+3*128*4]  # [ARITH] Load A[m+3, k+1]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+1] * B[k+1,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+1] * B[k+1,n+8:n+16]
+                                                mov          esi,    r9d                        # [PFTCH] = PREFETCH COUNTER
+                                                and          esi,           KMmask              # [PFTCH] = (m/5 << 8)
+                                                shl          esi,           2-KMshft            # [PFTCH] = (m/5 << 9) = m/5*128*sizeof(float)
+                                                lea          esi,   [esi+esi*4]                 # [PFTCH] = m*128*sizeof(float)
+    vbroadcastss ymm3,  [rax+1*4+4*128*4]  # [ARITH] Load A[m+4, k+1]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+1] * B[k+1,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+1] * B[k+1,n+8:n+16]
+                                           # [ARITH] K=2
+    vmovaps      ymm4,  [rbx+2*160*4]      # [ARITH] Load B[k+2, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+2*160*4+32]   # [ARITH] Load B[k+2, n+8:n+16]
+                                                add          rsi,    r13                        # [PFTCH] = &A[m][0]
+                                                mov          edx,    r9d                        # [PFTCH] = PREFETCH COUNTER
+                                                and          edx,           KKmask              # [PFTCH] = (k/8 << 1) = (k/4)
+                                                shl          edx,           KKshft              # [PFTCH] = (k/4 << 4) = k*sizeof(float)
+    vbroadcastss ymm3,  [rax+2*4+0*128*4]  # [ARITH] Load A[m+0, k+2]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+2] * B[k+2,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+2] * B[k+2,n+8:n+16]
+    vbroadcastss ymm3,  [rax+2*4+1*128*4]  # [ARITH] Load A[m+1, k+2]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+2] * B[k+2,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+2] * B[k+2,n+8:n+16]
+                                                add          rsi,    rdx                        # [PFTCH] = &A[m][k]
+                                                lea          edx,   [edx+edx*4]                 # [PFTCH] = k*5*sizeof(float)
+                                                shl          edx,    5                          # [PFTCH] = k*5*32*sizeof(float) = k*160*sizeof(float)
+                                                add          rdi,    rdx                        # [PFTCH] = &B[k][n]
+    vbroadcastss ymm3,  [rax+2*4+2*128*4]  # [ARITH] Load A[m+2, k+2]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+2] * B[k+2,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+2] * B[k+2,n+8:n+16]
+    vbroadcastss ymm3,  [rax+2*4+3*128*4]  # [ARITH] Load A[m+3, k+2]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+2] * B[k+2,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+2] * B[k+2,n+8:n+16]
+                                                sub          r9,     4                          # [PFTCH] PREFETCH COUNTER Bump (R9)
+                                                mov          ecx,    r8d                        # [PFTCH] PREFETCH COUNTER Bump (R9)
+                                                and          ecx,    K1                         # [PFTCH] PREFETCH COUNTER Bump (R9)
+                                                lzcnt        ecx,    ecx                        # [PFTCH] PREFETCH COUNTER Bump (R9)
+    vbroadcastss ymm3,  [rax+2*4+4*128*4]  # [ARITH] Load A[m+4, k+2]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+2] * B[k+2,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+2] * B[k+2,n+8:n+16]
+                                           # [ARITH] K=3
+    vmovaps      ymm4,  [rbx+3*160*4]      # [ARITH] Load B[k+3, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+3*160*4+32]   # [ARITH] Load B[k+3, n+8:n+16]
+                                                mov          edx,    r12d                       # [PFTCH] PREFETCH COUNTER Bump (R9)
+                                                shl          edx,    cl                         # [PFTCH] PREFETCH COUNTER Bump (R9)
+                                                shr          edx,    cl                         # [PFTCH] PREFETCH COUNTER Bump (R9)
+                                                xor          r9,     rdx                        # [PFTCH] PREFETCH COUNTER Bump (R9)
+    vbroadcastss ymm3,  [rax+3*4+0*128*4]  # [ARITH] Load A[m+0, k+3]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+3] * B[k+3,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+3] * B[k+3,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*4+1*128*4]  # [ARITH] Load A[m+1, k+3]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+3] * B[k+3,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+3] * B[k+3,n+8:n+16]
+                                                #vbroadcastss ymm2,  [rsi+0*128*4]               # [PFTCH] Execute Prefetch
+                                                #vbroadcastss ymm2,  [rsi+1*128*4]               # [PFTCH] Execute Prefetch
+                                                #vbroadcastss ymm2,  [rsi+2*128*4]               # [PFTCH] Execute Prefetch
+                                                #vbroadcastss ymm2,  [rsi+3*128*4]               # [PFTCH] Execute Prefetch
+                                                #vbroadcastss ymm2,  [rsi+4*128*4]               # [PFTCH] Execute Prefetch
+                                                #prefetcht0  [rsi+0*128*4]                       # [PFTCH] Execute Prefetch
+                                                #prefetcht0  [rsi+1*128*4]                       # [PFTCH] Execute Prefetch
+                                                #prefetcht0  [rsi+2*128*4]                       # [PFTCH] Execute Prefetch
+                                                #prefetcht0  [rsi+3*128*4]                       # [PFTCH] Execute Prefetch
+                                                #prefetcht0  [rsi+4*128*4]                       # [PFTCH] Execute Prefetch
+                                                                                                #
+                                                                                                #             CURRENT POINTER C COMPUTATION &
+                                                                                                #             CURRENT MODULO COUNTER (R8) DECREMENT &
+                                                                                                #             CURRENT/NEXT POINTER A & B COMPUTATION
+                                                                                                #
+                                                                                                #           REGISTERS I: R8, R12, R13, R14, R15
+                                                                                                #           REGISTERS O: R8, RCX, RDX, RDI, RSI
+                                                                                                #           REGISTERS available:   RCX, RDX, RDI, RSI, R10, R11
+                                                                                                #           REGISTERS unavailable: RAX, RBX, R9
+                                                                                                #
+                                                                                                # [COUNT] A-current-pointer (float A[M=160][K=128])
+                                                                                                # [COUNT] B-current-pointer (float B[K=128][N=160])
+                                                                                                # [COUNT] C-current-pointer (float C[M=160][N=160])
+                                                                                                # [COUNT] 
+                                                                                                # [COUNT] Coordinate System:
+                                                                                                # [COUNT] 
+                                                                                                # [COUNT]     Name:                  n/32 : m/5 : n&16 : k/8 : 1
+                                                                                                # [COUNT]     Max:                     4     31    1      15   1
+                                                                                                # [COUNT]     Bits:                    3      6    2       5   1
+                                                                                                # [COUNT]     Offset:                 14      8    6       1   0
+                                                                                                # [COUNT]
+                                                mov          edx,    r8d                        # [COUNT] = CURRENT COUNTER
+                                                and          edx,           KMmask              # [COUNT] = (m/5) << 8
+                                                shr          edx,           KMshft              # [COUNT] = (m/5) << 7 = m/5*32*sizeof(float)
+                                                lea          edx,   [edx+edx*4]                 # [COUNT] = m*32*sizeof(float)
+    vbroadcastss ymm3,  [rax+3*4+2*128*4]  # [ARITH] Load A[m+2, k+3]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+3] * B[k+3,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+3] * B[k+3,n+8:n+16]
+    vbroadcastss ymm3,  [rax+3*4+3*128*4]  # [ARITH] Load A[m+3, k+3]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+3] * B[k+3,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+3] * B[k+3,n+8:n+16]
+                                                lea          edx,   [edx+edx*4]                 # [COUNT] = m*160*sizeof(float)
+                                                addq         rdx,    r15                        # [COUNT] = &C[m,0]
+                                                mov          ecx,    r8d                        # [COUNT] = CURRENT COUNTER
+                                                and          ecx,           KNmask              # [COUNT] = (n/32) << 14 = (n << 9)
+                                                shr          ecx,           KNshft              # [COUNT] = (n << 2) = n*sizeof(float)
+    vbroadcastss ymm3,  [rax+3*4+4*128*4]  # [ARITH] Load A[m+4, k+3]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+3] * B[k+3,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+3] * B[k+3,n+8:n+16]
+                                           # [ARITH] K=4
+    vmovaps      ymm4,  [rbx+4*160*4]      # [ARITH] Load B[k+4, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+4*160*4+32]   # [ARITH] Load B[k+4, n+8:n+16]
+                                                addq         rdx,    rcx                        # [COUNT] = &C[m,n]
+                                                mov          ecx,    r8d                        # [COUNT] = CURRENT COUNTER
+                                                and          ecx,           KPmask              # [COUNT] = (n&16) << 2
+                                                shr          ecx,           KPshft              # [COUNT] = (n&16) << 2 = (n&16)*sizeof(float)
+                                                addq         rdx,    rcx                        # [COUNT] = &C[m,n+p]
+    vbroadcastss ymm3,  [rax+4*4+0*128*4]  # [ARITH] Load A[m+0, k+4]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+4] * B[k+4,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+4] * B[k+4,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*4+1*128*4]  # [ARITH] Load A[m+1, k+4]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+4] * B[k+4,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+4] * B[k+4,n+8:n+16]
+                                                mov          edi,    r8d                        # [COUNT] CURRENT COUNTER save
+                                                sub          r8,     4                          # [COUNT] CURRENT COUNTER Bump (R8)
+                                                mov          ecx,    r8d                        # [COUNT] CURRENT COUNTER Bump (R8)
+                                                and          ecx,    K1                         # [COUNT] CURRENT COUNTER Bump (R8)
+                                                lzcnt        ecx,    ecx                        # [COUNT] CURRENT COUNTER Bump (R8)
+    vbroadcastss ymm3,  [rax+4*4+2*128*4]  # [ARITH] Load A[m+2, k+4]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+4] * B[k+4,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+4] * B[k+4,n+8:n+16]
+    vbroadcastss ymm3,  [rax+4*4+3*128*4]  # [ARITH] Load A[m+3, k+4]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+4] * B[k+4,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+4] * B[k+4,n+8:n+16]
+                                                mov          esi,    r12d                       # [COUNT] CURRENT COUNTER Bump (R8)
+                                                shl          esi,    cl                         # [COUNT] CURRENT COUNTER Bump (R8)
+                                                shr          esi,    cl                         # [COUNT] CURRENT COUNTER Bump (R8)
+                                                xor          r8,     rsi                        # [COUNT] CURRENT COUNTER becomes NEXT
+    vbroadcastss ymm3,  [rax+4*4+4*128*4]  # [ARITH] Load A[m+4, k+4]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+4] * B[k+4,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+4] * B[k+4,n+8:n+16]
+                                           # [ARITH] K=5
+    vmovaps      ymm4,  [rbx+5*160*4]      # [ARITH] Load B[k+5, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+5*160*4+32]   # [ARITH] Load B[k+5, n+8:n+16]
+                                                mov          ecx,    r8d                        # [COUNT] = NEXT COUNTER
+                                                and          ecx,           KNmask              # [COUNT] = (n/32 << 14) = (n << 9)
+                                                shr          ecx,           KNshft              # [COUNT] = (n << 2) = n*sizeof(float)
+                                                mov          esi,    r8d                        # [COUNT] = NEXT COUNTER
+                                                and          esi,           KPmask              # [COUNT] = (n&16) << 2
+    vbroadcastss ymm3,  [rax+5*4+0*128*4]  # [ARITH] Load A[m+0, k+5]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+5] * B[k+5,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+5] * B[k+5,n+8:n+16]
+    vbroadcastss ymm3,  [rax+5*4+1*128*4]  # [ARITH] Load A[m+1, k+5]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+5] * B[k+5,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+5] * B[k+5,n+8:n+16]
+                                                shr          esi,           KPshft              # [COUNT] = (n&16) << 2 = (n&16)*sizeof(float)
+                                                add          ecx,    esi                        # [COUNT] = n*sizeof(float)
+                                                mov          esi,    r8d                        # [COUNT] = NEXT COUNTER
+                                                and          esi,           KMmask              # [COUNT] = (m/5 << 8)
+    vbroadcastss ymm3,  [rax+5*4+2*128*4]  # [ARITH] Load A[m+2, k+5]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+5] * B[k+5,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+5] * B[k+5,n+8:n+16]
+    vbroadcastss ymm3,  [rax+5*4+3*128*4]  # [ARITH] Load A[m+3, k+5]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+5] * B[k+5,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+5] * B[k+5,n+8:n+16]
+                                                shl          esi,           2-KMshft            # [COUNT] = (m/5 << 9) = m/5*128*sizeof(float)
+                                                lea          esi,   [esi+esi*4]                 # [COUNT] = m*128*sizeof(float)
+                                                #prefetchw   [rdx+0*160*4]                       # [COUNT] Execute Prefetch for write of C output
+                                                #prefetchw   [rdx+1*160*4]                       # [COUNT] Execute Prefetch for write of C output
+                                                #prefetchw   [rdx+2*160*4]                       # [COUNT] Execute Prefetch for write of C output
+                                                #prefetchw   [rdx+3*160*4]                       # [COUNT] Execute Prefetch for write of C output
+                                                #prefetchw   [rdx+4*160*4]                       # [COUNT] Execute Prefetch for write of C output
+    vbroadcastss ymm3,  [rax+5*4+4*128*4]  # [ARITH] Load A[m+4, k+5]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+5] * B[k+5,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+5] * B[k+5,n+8:n+16]
+                                           # [ARITH] K=6
+    vmovaps      ymm4,  [rbx+6*160*4]      # [ARITH] Load B[k+6, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+6*160*4+32]   # [ARITH] Load B[k+6, n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+0*128*4]  # [ARITH] Load A[m+0, k+6]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+6] * B[k+6,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+6] * B[k+6,n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+1*128*4]  # [ARITH] Load A[m+1, k+6]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+6] * B[k+6,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+6] * B[k+6,n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+2*128*4]  # [ARITH] Load A[m+2, k+6]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+6] * B[k+6,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+6] * B[k+6,n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+3*128*4]  # [ARITH] Load A[m+3, k+6]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+6] * B[k+6,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+6] * B[k+6,n+8:n+16]
+    vbroadcastss ymm3,  [rax+6*4+4*128*4]  # [ARITH] Load A[m+4, k+6]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+6] * B[k+6,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+6] * B[k+6,n+8:n+16]
+                                           # [ARITH] K=7
+    vmovaps      ymm4,  [rbx+7*160*4]      # [ARITH] Load B[k+7, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+7*160*4+32]   # [ARITH] Load B[k+7, n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+0*128*4]  # [ARITH] Load A[m+0, k+7]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+7] * B[k+7,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+7] * B[k+7,n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+1*128*4]  # [ARITH] Load A[m+1, k+7]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+7] * B[k+7,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+7] * B[k+7,n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+2*128*4]  # [ARITH] Load A[m+2, k+7]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+7] * B[k+7,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+7] * B[k+7,n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+3*128*4]  # [ARITH] Load A[m+3, k+7]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+7] * B[k+7,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+7] * B[k+7,n+8:n+16]
+    vbroadcastss ymm3,  [rax+7*4+4*128*4]  # [ARITH] Load A[m+4, k+7]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+7] * B[k+7,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+7] * B[k+7,n+8:n+16]
+                                           # [ARITH] K=8
+    vmovaps      ymm4,  [rbx+8*160*4]      # [ARITH] Load B[k+8, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+8*160*4+32]   # [ARITH] Load B[k+8, n+8:n+16]
+    vbroadcastss ymm3,  [rax+8*4+0*128*4]  # [ARITH] Load A[m+0, k+8]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+8] * B[k+8,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+8] * B[k+8,n+8:n+16]
+    vbroadcastss ymm3,  [rax+8*4+1*128*4]  # [ARITH] Load A[m+1, k+8]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+8] * B[k+8,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+8] * B[k+8,n+8:n+16]
+    vbroadcastss ymm3,  [rax+8*4+2*128*4]  # [ARITH] Load A[m+2, k+8]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+8] * B[k+8,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+8] * B[k+8,n+8:n+16]
+    vbroadcastss ymm3,  [rax+8*4+3*128*4]  # [ARITH] Load A[m+3, k+8]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+8] * B[k+8,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+8] * B[k+8,n+8:n+16]
+    vbroadcastss ymm3,  [rax+8*4+8*128*4]  # [ARITH] Load A[m+4, k+8]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+8] * B[k+8,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+8] * B[k+8,n+8:n+16]
+                                           # [ARITH] K=9
+    vmovaps      ymm4,  [rbx+9*160*4]      # [ARITH] Load B[k+9, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+9*160*4+32]   # [ARITH] Load B[k+9, n+8:n+16]
+    vbroadcastss ymm3,  [rax+9*4+0*128*4]  # [ARITH] Load A[m+0, k+9]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+9] * B[k+9,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+9] * B[k+9,n+8:n+16]
+    vbroadcastss ymm3,  [rax+9*4+1*128*4]  # [ARITH] Load A[m+1, k+9]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+9] * B[k+9,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+9] * B[k+9,n+8:n+16]
+    vbroadcastss ymm3,  [rax+9*4+2*128*4]  # [ARITH] Load A[m+2, k+9]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+9] * B[k+9,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+9] * B[k+9,n+8:n+16]
+    vbroadcastss ymm3,  [rax+9*4+3*128*4]  # [ARITH] Load A[m+3, k+9]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+9] * B[k+9,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+9] * B[k+9,n+8:n+16]
+    vbroadcastss ymm3,  [rax+9*4+4*128*4]  # [ARITH] Load A[m+4, k+9]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+9] * B[k+9,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+9] * B[k+9,n+8:n+16]
+                                           # [ARITH] K=10
+    vmovaps      ymm4,  [rbx+10*160*4]     # [ARITH] Load B[k+10, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+10*160*4+32]  # [ARITH] Load B[k+10, n+8:n+16]
+    vbroadcastss ymm3,  [rax+10*4+0*128*4] # [ARITH] Load A[m+0, k+10]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+10] * B[k+10,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+10] * B[k+10,n+8:n+16]
+    vbroadcastss ymm3,  [rax+10*4+1*128*4] # [ARITH] Load A[m+1, k+10]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+10] * B[k+10,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+10] * B[k+10,n+8:n+16]
+    vbroadcastss ymm3,  [rax+10*4+2*128*4] # [ARITH] Load A[m+2, k+10]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+10] * B[k+10,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+10] * B[k+10,n+8:n+16]
+    vbroadcastss ymm3,  [rax+10*4+3*128*4] # [ARITH] Load A[m+3, k+10]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+10] * B[k+10,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+10] * B[k+10,n+8:n+16]
+    vbroadcastss ymm3,  [rax+10*4+4*128*4] # [ARITH] Load A[m+4, k+10]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+10] * B[k+10,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+10] * B[k+10,n+8:n+16]
+                                           # [ARITH] K=11
+    vmovaps      ymm4,  [rbx+11*160*4]     # [ARITH] Load B[k+11, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+11*160*4+32]  # [ARITH] Load B[k+11, n+8:n+16]
+    vbroadcastss ymm3,  [rax+11*4+0*128*4] # [ARITH] Load A[m+0, k+11]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+11] * B[k+11,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+11] * B[k+11,n+8:n+16]
+    vbroadcastss ymm3,  [rax+11*4+1*128*4] # [ARITH] Load A[m+1, k+11]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+11] * B[k+11,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+11] * B[k+11,n+8:n+16]
+    vbroadcastss ymm3,  [rax+11*4+2*128*4] # [ARITH] Load A[m+2, k+11]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+11] * B[k+11,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+11] * B[k+11,n+8:n+16]
+    vbroadcastss ymm3,  [rax+11*4+3*128*4] # [ARITH] Load A[m+3, k+11]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+11] * B[k+11,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+11] * B[k+11,n+8:n+16]
+    vbroadcastss ymm3,  [rax+11*4+4*128*4] # [ARITH] Load A[m+4, k+11]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+11] * B[k+11,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+11] * B[k+11,n+8:n+16]
+                                           # [ARITH] K=12
+    vmovaps      ymm4,  [rbx+12*160*4]     # [ARITH] Load B[k+12, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+12*160*4+32]  # [ARITH] Load B[k+12, n+8:n+16]
+    vbroadcastss ymm3,  [rax+12*4+0*128*4] # [ARITH] Load A[m+0, k+12]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+12] * B[k+12,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+12] * B[k+12,n+8:n+16]
+    vbroadcastss ymm3,  [rax+12*4+1*128*4] # [ARITH] Load A[m+1, k+12]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+12] * B[k+12,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+12] * B[k+12,n+8:n+16]
+    vbroadcastss ymm3,  [rax+12*4+2*128*4] # [ARITH] Load A[m+2, k+12]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+12] * B[k+12,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+12] * B[k+12,n+8:n+16]
+    vbroadcastss ymm3,  [rax+12*4+3*128*4] # [ARITH] Load A[m+3, k+12]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+12] * B[k+12,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+12] * B[k+12,n+8:n+16]
+    vbroadcastss ymm3,  [rax+12*4+4*128*4] # [ARITH] Load A[m+4, k+12]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+12] * B[k+12,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+12] * B[k+12,n+8:n+16]
+                                           # [ARITH] K=13
+    vmovaps      ymm4,  [rbx+13*160*4]     # [ARITH] Load B[k+13, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+13*160*4+32]  # [ARITH] Load B[k+13, n+8:n+16]
+    vbroadcastss ymm3,  [rax+13*4+0*128*4] # [ARITH] Load A[m+0, k+13]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+13] * B[k+13,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+13] * B[k+13,n+8:n+16]
+    vbroadcastss ymm3,  [rax+13*4+1*128*4] # [ARITH] Load A[m+1, k+13]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+13] * B[k+13,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+13] * B[k+13,n+8:n+16]
+    vbroadcastss ymm3,  [rax+13*4+2*128*4] # [ARITH] Load A[m+2, k+13]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+13] * B[k+13,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+13] * B[k+13,n+8:n+16]
+    vbroadcastss ymm3,  [rax+13*4+3*128*4] # [ARITH] Load A[m+3, k+13]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+13] * B[k+13,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+13] * B[k+13,n+8:n+16]
+    vbroadcastss ymm3,  [rax+13*4+4*128*4] # [ARITH] Load A[m+4, k+13]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+13] * B[k+13,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+13] * B[k+13,n+8:n+16]
+                                           # [ARITH] K=14
+    vmovaps      ymm4,  [rbx+14*160*4]     # [ARITH] Load B[k+14, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+14*160*4+32]  # [ARITH] Load B[k+14, n+8:n+16]
+    vbroadcastss ymm3,  [rax+14*4+0*128*4] # [ARITH] Load A[m+0, k+14]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+14] * B[k+14,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+14] * B[k+14,n+8:n+16]
+    vbroadcastss ymm3,  [rax+14*4+1*128*4] # [ARITH] Load A[m+1, k+14]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+14] * B[k+14,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+14] * B[k+14,n+8:n+16]
+    vbroadcastss ymm3,  [rax+14*4+2*128*4] # [ARITH] Load A[m+2, k+14]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+14] * B[k+14,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+14] * B[k+14,n+8:n+16]
+    vbroadcastss ymm3,  [rax+14*4+3*128*4] # [ARITH] Load A[m+3, k+14]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+14] * B[k+14,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+14] * B[k+14,n+8:n+16]
+    vbroadcastss ymm3,  [rax+14*4+4*128*4] # [ARITH] Load A[m+4, k+14]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+14] * B[k+14,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+14] * B[k+14,n+8:n+16]
+                                           # [ARITH] K=15
+    vmovaps      ymm4,  [rbx+15*160*4]     # [ARITH] Load B[k+15, n  :n+ 8]
+    vmovaps      ymm5,  [rbx+15*160*4+32]  # [ARITH] Load B[k+15, n+8:n+16]
+    vbroadcastss ymm3,  [rax+15*4+0*128*4] # [ARITH] Load A[m+0, k+15]
+    vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+15] * B[k+15,n:n+8]
+    vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+15] * B[k+15,n+8:n+16]
+    vbroadcastss ymm3,  [rax+15*4+1*128*4] # [ARITH] Load A[m+1, k+15]
+    vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+15] * B[k+15,n:n+8]
+    vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+15] * B[k+15,n+8:n+16]
+    vbroadcastss ymm3,  [rax+15*4+2*128*4] # [ARITH] Load A[m+2, k+15]
+    vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+15] * B[k+15,n:n+8]
+    vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+15] * B[k+15,n+8:n+16]
+    vbroadcastss ymm3,  [rax+15*4+3*128*4] # [ARITH] Load A[m+3, k+15]
+    vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+15] * B[k+15,n:n+8]
+    vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+15] * B[k+15,n+8:n+16]
+    vbroadcastss ymm3,  [rax+15*4+4*128*4] # [ARITH] Load A[m+4, k+15]
+    vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+15] * B[k+15,n:n+8]
+    vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+15] * B[k+15,n+8:n+16]
+    addq         rax,    16*4              # [ARITH] Pointer Bump A[m, k+=16]
+    addq         rbx,    16*160*4          # [ARITH] Pointer Bump B[k+=16, n]
     
     #
-    #   POINTER A & B BUMPS
+    # Inner Loop Exit Test
     #
-    addq         rax,    8*4                    #     A[m, k+=8]
-    addq         rbx,    8*400*4                #     B[k+=8, n]
+    test         edi,    KKmask            # [ILOOP] Exit if old K == 0
+    jnz .Lsgemm_zen2_bu_core_16x_unroll_accumulate
+    
+    #
+    # Eject accumulators and clear.
+    #
+    vmovntps    [rdx+0*160*4],    ymm6     # [EJECT] C[0][n:n+8]
+    vmovntps    [rdx+0*160*4+32], ymm7     # [EJECT] C[0][n+8:n+16]
+    vxorps       ymm6,   ymm6,    ymm6
+    vxorps       ymm7,   ymm7,    ymm7
+    vmovntps    [rdx+1*160*4],    ymm8     # [EJECT] C[1][n:n+8]
+    vmovntps    [rdx+1*160*4+32], ymm9     # [EJECT] C[1][n+8:n+16]
+    vmovaps      ymm8,   ymm6
+    vmovaps      ymm9,   ymm7
+    vmovntps    [rdx+2*160*4],    ymm10    # [EJECT] C[2][n:n+8]
+    vmovntps    [rdx+2*160*4+32], ymm11    # [EJECT] C[2][n+8:n+16]
+    vmovaps      ymm10,  ymm6
+    vmovaps      ymm11,  ymm7
+    vmovntps    [rdx+3*160*4],    ymm12    # [EJECT] C[3][n:n+8]
+    vmovntps    [rdx+3*160*4+32], ymm13    # [EJECT] C[3][n+8:n+16]
+    vmovaps      ymm12,  ymm6
+    vmovaps      ymm13,  ymm7
+    vmovntps    [rdx+4*160*4],    ymm14    # [EJECT] C[4][n:n+8]
+    vmovntps    [rdx+4*160*4+32], ymm15    # [EJECT] C[4][n+8:n+16]
+    vmovaps      ymm14,  ymm6
+    vmovaps      ymm15,  ymm7
+    leaq         rax,   [r13+rsi]          # [EJECT] Install A-pointer
+    leaq         rbx,   [r14+rcx]          # [EJECT] Install B-pointer
+    
+    #
+    # Outer Loop Exit Test and Return R10
+    #
+    test         edi,    KKMNPmask         # [OLOOP] Test if old countdown register == 0
+    jnz .Lsgemm_zen2_bu_core_16x_unroll_accumulate
+    jmp          r10                       # [RET]   Return to *r10
 
-#if 1
+
+
     #
-    #   PREFETCH MODULO COUNTER (R9) DECREMENT &
-    #   PREFETCH ADDRESS COMPUTATION &
-    #   PREFETCH DATA
+    ## Old eject logic
     #
-    # I: R9, R12, R13, R14, R15
-    # O: R9
-    # Registers available:   RCX, RDX, RDI, RSI, R10, R11
-    # Registers unavailable: RAX, RBX, R8
-    #
-    # A-prefetch-pointer (float A[M=400][K= 64])
-    # B-prefetch-pointer (float B[K= 64][N=400])
-    # C-prefetch-pointer (float C[M=400][N=400])
-    #
-    # Coordinate System:
-    #     Name:                 mb : nb : ma : na : k8 : 10000
-    #     Max:                  15    4    4    4    7   16
-    #     Bits:                  5    5    5    4    4   5
-    #     Offset:               23   18   13    9    5   0
-    #
-    sub          r9d,    32                     # [PREFETCH COUNTER]
-    mov          ecx,    r9d                    # [PREFETCH COUNTER]
-    and          ecx,    K1                     # [PREFETCH COUNTER]
-    lzcnt        ecx,    ecx                    # [PREFETCH COUNTER]
-    mov          esi,    r12d                   # [PREFETCH COUNTER]
-    shl          esi,    cl                     # [PREFETCH COUNTER]
-    shr          esi,    cl                     # [PREFETCH COUNTER]
-    xor          r9d,    esi                    # [PREFETCH COUNTER]
-    
-    mov          ecx,    r9d                    # = PREFETCH COUNTER
-    and          ecx,           KMmask
-    imul         ecx,    ecx,   KMmixm
-    shr          ecx,           KMshft          # = m
-    imul         edx,    ecx,   400*4           # = m*400*sizeof(float)
-    shl          ecx,    8                      # = m* 64*sizeof(float)
-    addq         rdx,    r15                    # = &C[m,0]
-    
-    mov          esi,    r12d                   # =  K0 CONSTANT
-    neg          esi                            # = -K0
-    sub          esi,    r9d                    # = -K0 - PREFETCH COUNTER
-    and          esi,           KKmask          # = k*sizeof(float)
-    imul         edi,    esi,   400             # = k*400*sizeof(float)
-    add          esi,    ecx                    # = (m*64 + k)*sizeof(float)
-    add          rdi,    r14                    # = &B[k,0]
-    
-    prefetcht0  [r13 + rsi + 1*64*4]            # Prefetch A[m+1,k:k+8]
-    prefetcht0  [r13 + rsi + 0*64*4]            # Prefetch A[m,  k:k+8]
-    prefetcht0  [r13 + rsi + 3*64*4]            # Prefetch A[m+3,k:k+8]
-    prefetcht0  [r13 + rsi + 2*64*4]            # Prefetch A[m+2,k:k+8]
-    prefetcht0  [r13 + rsi + 4*64*4]            # Prefetch A[m+4,k:k+8]
-    
-    mov          ecx,    r9d                    # = PREFETCH COUNTER
-    and          ecx,           KNmask
-    imul         ecx,    ecx,   KNmixm
-    shr          ecx,           KNshft          # = n
-    
-    prefetchw   [rdx + rcx*4 + 1*400*4]         # Prefetch C[m+1,n:n+16]
-    prefetchw   [rdx + rcx*4 + 0*400*4]         # Prefetch C[m+0,n:n+16]
-    prefetchw   [rdx + rcx*4 + 3*400*4]         # Prefetch C[m+3,n:n+16]
-    prefetchw   [rdx + rcx*4 + 2*400*4]         # Prefetch C[m+2,n:n+16]
-    prefetchw   [rdx + rcx*4 + 4*400*4]         # Prefetch C[m+4,n:n+16]
-    prefetcht0  [rdi + rcx*4 + 0*400*4]         # Prefetch B[k+0,n:n+16]
-    prefetcht0  [rdi + rcx*4 + 5*400*4]         # Prefetch B[k+5,n:n+16]
-    prefetcht0  [rdi + rcx*4 + 2*400*4]         # Prefetch B[k+2,n:n+16]
-    prefetcht0  [rdi + rcx*4 + 7*400*4]         # Prefetch B[k+7,n:n+16]
-    prefetcht0  [rdi + rcx*4 + 1*400*4]         # Prefetch B[k+1,n:n+16]
-    prefetcht0  [rdi + rcx*4 + 6*400*4]         # Prefetch B[k+6,n:n+16]
-    prefetcht0  [rdi + rcx*4 + 3*400*4]         # Prefetch B[k+3,n:n+16]
-    prefetcht0  [rdi + rcx*4 + 4*400*4]         # Prefetch B[k+4,n:n+16]
-#endif
-    
-    #
-    #   CURRENT POINTER C COMPUTATION &
-    #   CURRENT MODULO COUNTER (R8) DECREMENT &
-    #   CURRENT/NEXT POINTER A & B COMPUTATION
-    #
-    # I: R8, R12, R13, R14, R15
-    # O: R8, RCX, RDX, RDI, RSI
-    # Registers available:   RCX, RDX, RDI, RSI, R10, R11
-    # Registers unavailable: RAX, RBX, R9
-    #
-    # A-current-pointer (float A[M=400][K= 64])
-    # B-current-pointer (float B[K= 64][N=400])
-    # C-current-pointer (float C[M=400][N=400])
-    #
-    # Coordinate System:
-    #     Name:                 mb : nb : ma : na : k8 : 10000
-    #     Max:                  15    4    4    4    7   16
-    #     Bits:                  5    5    5    4    4   5
-    #     Offset:               23   18   13    9    5   0
-    #
-    mov          edx,    r8d                    # = CURRENT COUNTER
-    and          edx,           KMmask
-    imul         edx,    edx,   KMmixm
-    shr          edx,           KMshft          # = m
-    imul         edx,    edx,   400*4           # = m*400*sizeof(float)
-    addq         rdx,    r15                    # = &C[m,0]
-    
-    mov          ecx,    r8d                    # = CURRENT COUNTER
-    and          ecx,           KNmask
-    imul         ecx,    ecx,   KNmixm
-    shr          ecx,           KNshft          # = n
-    leaq         rdx,   [rdx+rcx*4]             # = &C[m,n]
-    
-    mov          edi,    r8d                    # [CURRENT COUNTER SAVE]
-    sub          r8d,    32                     # [CURRENT COUNTER]
-    mov          ecx,    r8d                    # [CURRENT COUNTER]
-    and          ecx,    K1                     # [CURRENT COUNTER]
-    lzcnt        ecx,    ecx                    # [CURRENT COUNTER]
-    mov          esi,    r12d                   # [CURRENT COUNTER]
-    shl          esi,    cl                     # [CURRENT COUNTER]
-    shr          esi,    cl                     # [CURRENT COUNTER]
-    xor          r8d,    esi                    # [CURRENT COUNTER BECOMES NEXT]
-    
-    mov          esi,    r8d                    # = NEXT COUNTER
-    and          esi,           KMmask
-    imul         esi,    esi,   KMmixm
-    shr          esi,           KMshft          # = m
-    shl          esi,    8                      # = m*64*sizeof(float)
-    
-    mov          ecx,    r8d                    # = NEXT COUNTER
-    and          ecx,           KNmask
-    imul         ecx,    ecx,   KNmixm
-    shr          ecx,           KNshft          # = n
-    shl          ecx,    2                      # = n*sizeof(float)
-    
-    #
-    # Loop exit test
-    #
-    test         edi,    0b011100000            # Exit if old_k == 0
-    jne .Lsgemm_zen2_bu_core_8x_unroll_accumulate
-    leaq         rax,   [r13+rsi]               # Install A-pointer
-    leaq         rbx,   [r14+rcx]               # Install B-pointer
-    
-    #
-    # Eject accumulators and reload.
-    #
-    vmovaps     [rdx+1*320*4],    ymm8          # C[1][n:n+8]
-    vmovaps     [rdx+1*320*4+32], ymm9          # C[1][n+8:n+16]
-    vmovaps     [rdx],            ymm6          # C[0][n:n+8]
-    vmovaps     [rdx+32],         ymm7          # C[0][n+8:n+16]
-    vmovaps     [rdx+3*320*4],    ymm12         # C[3][n:n+8]
-    vmovaps     [rdx+3*320*4+32], ymm13         # C[3][n+8:n+16]
-    vmovaps     [rdx+2*320*4],    ymm10         # C[2][n:n+8]
-    vmovaps     [rdx+2*320*4+32], ymm11         # C[2][n+8:n+16]
-    vmovaps     [rdx+4*320*4],    ymm14         # C[4][n:n+8]
-    vmovaps     [rdx+4*320*4+32], ymm15         # C[4][n+8:n+16]
-    
-    vmovaps      ymm4,  [rbx+0*400*4]           #     Load B[k+0, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+0*400*4+32]        #     Load B[k+0, n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4+1*64*4]        #     Load A[m+1, k+0]
-    vmulps       ymm8,   ymm3,  ymm4            #      => acc10 += A[1,k+0] * B[k,n:n+8]
-    vmulps       ymm9,   ymm3,  ymm5            #      => acc11 += A[1,k+0] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4]               #     Load A[m+0, k+0]
-    vmulps       ymm6,   ymm3,  ymm4            #      => acc00 += A[0,k+0] * B[k,n:n+8]
-    vmulps       ymm7,   ymm3,  ymm5            #      => acc01 += A[0,k+0] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4+3*64*4]        #     Load A[m+3, k+0]
-    vmulps       ymm12,  ymm3,  ymm4            #      => acc30 += A[3,k+0] * B[k,n:n+8]
-    vmulps       ymm13,  ymm3,  ymm5            #      => acc31 += A[3,k+0] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4+2*64*4]        #     Load A[m+2, k+0]
-    vmulps       ymm10,  ymm3,  ymm4            #      => acc20 += A[2,k+0] * B[k,n:n+8]
-    vmulps       ymm11,  ymm3,  ymm5            #      => acc21 += A[2,k+0] * B[k,n+8:n+16]
-    vbroadcastss ymm3,  [rax+0*4+4*64*4]        #     Load A[m+4, k+0]
-    vmulps       ymm14,  ymm3,  ymm4            #      => acc40 += A[4,k+0] * B[k,n:n+8]
-    vmulps       ymm15,  ymm3,  ymm5            #      => acc41 += A[4,k+0] * B[k,n+8:n+16]
-    
-    test         r8d,    r8d                    # Test if countdown register >= 0
-    jge .Lsgemm_zen2_bu_core_8x_unroll_skip_first_iter
-    jmp          r10
+    # leaq         rax,   [r13+rsi]          # [EJECT] Install A-pointer
+    # leaq         rbx,   [r14+rcx]          # [EJECT] Install B-pointer
+    # vmovaps      ymm4,  [rbx+0*160*4]      # [EJECT]     Load B[k+0, n  :n+ 8]
+    # vmovaps      ymm5,  [rbx+0*160*4+32]   # [EJECT]     Load B[k+0, n+8:n+16]
+    # vmovntps    [rdx+0*160*4],    ymm6     # [EJECT] C[0][n:n+8]
+    # vmovntps    [rdx+0*160*4+32], ymm7     # [EJECT] C[0][n+8:n+16]
+    # vbroadcastss ymm3,  [rax+0*4+0*128*4]  # [EJECT]     Load A[m+0, k+0]
+    # vmulps       ymm6,   ymm3,  ymm4       # [EJECT]      => acc00 += A[0,k+0] * B[k,n:n+8]
+    # vmulps       ymm7,   ymm3,  ymm5       # [EJECT]      => acc01 += A[0,k+0] * B[k,n+8:n+16]
+    # vmovntps    [rdx+1*160*4],    ymm8     # [EJECT] C[1][n:n+8]
+    # vmovntps    [rdx+1*160*4+32], ymm9     # [EJECT] C[1][n+8:n+16]
+    # vbroadcastss ymm3,  [rax+0*4+1*128*4]  # [EJECT]     Load A[m+1, k+0]
+    # vmulps       ymm8,   ymm3,  ymm4       # [EJECT]      => acc10 += A[1,k+0] * B[k,n:n+8]
+    # vmulps       ymm9,   ymm3,  ymm5       # [EJECT]      => acc11 += A[1,k+0] * B[k,n+8:n+16]
+    # vmovntps    [rdx+2*160*4],    ymm10    # [EJECT] C[2][n:n+8]
+    # vmovntps    [rdx+2*160*4+32], ymm11    # [EJECT] C[2][n+8:n+16]
+    # vbroadcastss ymm3,  [rax+0*4+2*128*4]  # [EJECT]     Load A[m+2, k+0]
+    # vmulps       ymm10,  ymm3,  ymm4       # [EJECT]      => acc20 += A[2,k+0] * B[k,n:n+8]
+    # vmulps       ymm11,  ymm3,  ymm5       # [EJECT]      => acc21 += A[2,k+0] * B[k,n+8:n+16]
+    # vmovntps    [rdx+3*160*4],    ymm12    # [EJECT] C[3][n:n+8]
+    # vmovntps    [rdx+3*160*4+32], ymm13    # [EJECT] C[3][n+8:n+16]
+    # vbroadcastss ymm3,  [rax+0*4+3*128*4]  # [EJECT]     Load A[m+3, k+0]
+    # vmulps       ymm12,  ymm3,  ymm4       # [EJECT]      => acc30 += A[3,k+0] * B[k,n:n+8]
+    # vmulps       ymm13,  ymm3,  ymm5       # [EJECT]      => acc31 += A[3,k+0] * B[k,n+8:n+16]
+    # vmovntps    [rdx+4*160*4],    ymm14    # [EJECT] C[4][n:n+8]
+    # vmovntps    [rdx+4*160*4+32], ymm15    # [EJECT] C[4][n+8:n+16]
+    # vbroadcastss ymm3,  [rax+0*4+4*128*4]  # [EJECT]     Load A[m+4, k+0]
+    # vmulps       ymm14,  ymm3,  ymm4       # [EJECT]      => acc40 += A[4,k+0] * B[k,n:n+8]
+    # vmulps       ymm15,  ymm3,  ymm5       # [EJECT]      => acc41 += A[4,k+0] * B[k,n+8:n+16]
+    # test         edi,    KKMNPmask         # [OLOOP] Test if old countdown register == 0
+    # jnz .Lsgemm_zen2_bu_core_16x_unroll_skip_first_iter
+
