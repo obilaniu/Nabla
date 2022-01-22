@@ -1393,9 +1393,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
                                            #           REGISTERS USED: RAX, RBX, YMMx
                                            # [ARITH] K=0
     vmovaps      ymm4,  [rbx+0*160*4]      # [ARITH] Load B[k+0, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+0*160*4+32]   # [ARITH] Load B[k+0, n+8:n+16]
     vbroadcastss ymm3,  [rax+0*4+0*128*4]  # [ARITH] Load A[m+0, k+0]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+0] * B[k+0,n:n+8]
+    vmovaps      ymm5,  [rbx+0*160*4+32]   # [ARITH] Load B[k+0, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+0] * B[k+0,n+8:n+16]
     vbroadcastss ymm3,  [rax+0*4+1*128*4]  # [ARITH] Load A[m+1, k+0]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+0] * B[k+0,n:n+8]
@@ -1411,9 +1411,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+0] * B[k+0,n+8:n+16]
                                            # [ARITH] K=1
     vmovaps      ymm4,  [rbx+1*160*4]      # [ARITH] Load B[k+1, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+1*160*4+32]   # [ARITH] Load B[k+1, n+8:n+16]
     vbroadcastss ymm3,  [rax+1*4+0*128*4]  # [ARITH] Load A[m+0, k+1]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+1] * B[k+1,n:n+8]
+    vmovaps      ymm5,  [rbx+1*160*4+32]   # [ARITH] Load B[k+1, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+1] * B[k+1,n+8:n+16]
     vbroadcastss ymm3,  [rax+1*4+1*128*4]  # [ARITH] Load A[m+1, k+1]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+1] * B[k+1,n:n+8]
@@ -1429,9 +1429,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+1] * B[k+1,n+8:n+16]
                                            # [ARITH] K=2
     vmovaps      ymm4,  [rbx+2*160*4]      # [ARITH] Load B[k+2, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+2*160*4+32]   # [ARITH] Load B[k+2, n+8:n+16]
     vbroadcastss ymm3,  [rax+2*4+0*128*4]  # [ARITH] Load A[m+0, k+2]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+2] * B[k+2,n:n+8]
+    vmovaps      ymm5,  [rbx+2*160*4+32]   # [ARITH] Load B[k+2, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+2] * B[k+2,n+8:n+16]
     vbroadcastss ymm3,  [rax+2*4+1*128*4]  # [ARITH] Load A[m+1, k+2]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+2] * B[k+2,n:n+8]
@@ -1447,9 +1447,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+2] * B[k+2,n+8:n+16]
                                            # [ARITH] K=3
     vmovaps      ymm4,  [rbx+3*160*4]      # [ARITH] Load B[k+3, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+3*160*4+32]   # [ARITH] Load B[k+3, n+8:n+16]
     vbroadcastss ymm3,  [rax+3*4+0*128*4]  # [ARITH] Load A[m+0, k+3]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+3] * B[k+3,n:n+8]
+    vmovaps      ymm5,  [rbx+3*160*4+32]   # [ARITH] Load B[k+3, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+3] * B[k+3,n+8:n+16]
     vbroadcastss ymm3,  [rax+3*4+1*128*4]  # [ARITH] Load A[m+1, k+3]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+3] * B[k+3,n:n+8]
@@ -1476,10 +1476,10 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
                                                                                                 # [COUNT]     Offset:                 14      8    6       1   0
                                                                                                 # [COUNT]
                                                 mov          edx,    r8d                        # [COUNT] = CURRENT COUNTER
-                                                and          edx,           KMmask              # [COUNT] = (m/5) << 8
     vbroadcastss ymm3,  [rax+3*4+2*128*4]  # [ARITH] Load A[m+2, k+3]
     vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+3] * B[k+3,n:n+8]
     vfmadd231ps  ymm11,  ymm3,  ymm5       # [ARITH]  => acc21 += A[2,k+3] * B[k+3,n+8:n+16]
+                                                and          edx,           KMmask              # [COUNT] = (m/5) << 8
     vbroadcastss ymm3,  [rax+3*4+3*128*4]  # [ARITH] Load A[m+3, k+3]
     vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+3] * B[k+3,n:n+8]
     vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+3] * B[k+3,n+8:n+16]
@@ -1489,10 +1489,10 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+3] * B[k+3,n+8:n+16]
                                            # [ARITH] K=4
     vmovaps      ymm4,  [rbx+4*160*4]      # [ARITH] Load B[k+4, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+4*160*4+32]   # [ARITH] Load B[k+4, n+8:n+16]
-                                                lea          edx,   [edx+edx*4]                 # [COUNT] = m*32*sizeof(float)
     vbroadcastss ymm3,  [rax+4*4+0*128*4]  # [ARITH] Load A[m+0, k+4]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+4] * B[k+4,n:n+8]
+                                                lea          edx,   [edx+edx*4]                 # [COUNT] = m*32*sizeof(float)
+    vmovaps      ymm5,  [rbx+4*160*4+32]   # [ARITH] Load B[k+4, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+4] * B[k+4,n+8:n+16]
                                                 lea          edx,   [edx+edx*4]                 # [COUNT] = m*160*sizeof(float)
                                                 addq         rdx,    r15                        # [COUNT] = &C[m,0]
@@ -1514,9 +1514,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
                                                 addq         rdx,    rcx                        # [COUNT] = &C[m,n]
                                            # [ARITH] K=5
     vmovaps      ymm4,  [rbx+5*160*4]      # [ARITH] Load B[k+5, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+5*160*4+32]   # [ARITH] Load B[k+5, n+8:n+16]
     vbroadcastss ymm3,  [rax+5*4+0*128*4]  # [ARITH] Load A[m+0, k+5]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+5] * B[k+5,n:n+8]
+    vmovaps      ymm5,  [rbx+5*160*4+32]   # [ARITH] Load B[k+5, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+5] * B[k+5,n+8:n+16]
     vbroadcastss ymm3,  [rax+5*4+1*128*4]  # [ARITH] Load A[m+1, k+5]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+5] * B[k+5,n:n+8]
@@ -1529,16 +1529,16 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vbroadcastss ymm3,  [rax+5*4+3*128*4]  # [ARITH] Load A[m+3, k+5]
     vfmadd231ps  ymm12,  ymm3,  ymm4       # [ARITH]  => acc30 += A[3,k+5] * B[k+5,n:n+8]
     vfmadd231ps  ymm13,  ymm3,  ymm5       # [ARITH]  => acc31 += A[3,k+5] * B[k+5,n+8:n+16]
-                                                shr          ecx,           KPshft              # [COUNT] = (n&16) << 2 = (n&16)*sizeof(float)
+    #                                           shr          ecx,           KPshft              # [COUNT] = (n&16) << 2 = (n&16)*sizeof(float)
                                                 addq         rdx,    rcx                        # [COUNT] = &C[m,n+p]
     vbroadcastss ymm3,  [rax+5*4+4*128*4]  # [ARITH] Load A[m+4, k+5]
     vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+5] * B[k+5,n:n+8]
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+5] * B[k+5,n+8:n+16]
                                            # [ARITH] K=6
     vmovaps      ymm4,  [rbx+6*160*4]      # [ARITH] Load B[k+6, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+6*160*4+32]   # [ARITH] Load B[k+6, n+8:n+16]
     vbroadcastss ymm3,  [rax+6*4+0*128*4]  # [ARITH] Load A[m+0, k+6]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+6] * B[k+6,n:n+8]
+    vmovaps      ymm5,  [rbx+6*160*4+32]   # [ARITH] Load B[k+6, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+6] * B[k+6,n+8:n+16]
                                                 mov          edi,    r8d                        # [COUNT] CURRENT COUNTER save
                                                 sub          r8,     4                          # [COUNT] CURRENT COUNTER Bump (R8)
@@ -1560,9 +1560,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
                                                 mov          esi,    r12d                       # [COUNT] CURRENT COUNTER Bump (R8)
                                            # [ARITH] K=7
     vmovaps      ymm4,  [rbx+7*160*4]      # [ARITH] Load B[k+7, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+7*160*4+32]   # [ARITH] Load B[k+7, n+8:n+16]
     vbroadcastss ymm3,  [rax+7*4+0*128*4]  # [ARITH] Load A[m+0, k+7]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+7] * B[k+7,n:n+8]
+    vmovaps      ymm5,  [rbx+7*160*4+32]   # [ARITH] Load B[k+7, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+7] * B[k+7,n+8:n+16]
     vbroadcastss ymm3,  [rax+7*4+1*128*4]  # [ARITH] Load A[m+1, k+7]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+7] * B[k+7,n:n+8]
@@ -1582,9 +1582,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+7] * B[k+7,n+8:n+16]
                                            # [ARITH] K=8
     vmovaps      ymm4,  [rbx+8*160*4]      # [ARITH] Load B[k+8, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+8*160*4+32]   # [ARITH] Load B[k+8, n+8:n+16]
     vbroadcastss ymm3,  [rax+8*4+0*128*4]  # [ARITH] Load A[m+0, k+8]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+8] * B[k+8,n:n+8]
+    vmovaps      ymm5,  [rbx+8*160*4+32]   # [ARITH] Load B[k+8, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+8] * B[k+8,n+8:n+16]
                                                 and          ecx,           KNmask              # [COUNT] = (n/32 << 14) = (n << 9)
                                                 shr          ecx,           KNshft              # [COUNT] = (n << 2) = n*sizeof(float)
@@ -1602,13 +1602,13 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vbroadcastss ymm3,  [rax+8*4+8*128*4]  # [ARITH] Load A[m+4, k+8]
     vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+8] * B[k+8,n:n+8]
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+8] * B[k+8,n+8:n+16]
-                                                shr          esi,           KPshft              # [COUNT] = (n&16) << 2 = (n&16)*sizeof(float)
+    #                                           shr          esi,           KPshft              # [COUNT] = (n&16) << 2 = (n&16)*sizeof(float)
                                                 add          ecx,    esi                        # [COUNT] = n*sizeof(float)
                                            # [ARITH] K=9
     vmovaps      ymm4,  [rbx+9*160*4]      # [ARITH] Load B[k+9, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+9*160*4+32]   # [ARITH] Load B[k+9, n+8:n+16]
     vbroadcastss ymm3,  [rax+9*4+0*128*4]  # [ARITH] Load A[m+0, k+9]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+9] * B[k+9,n:n+8]
+    vmovaps      ymm5,  [rbx+9*160*4+32]   # [ARITH] Load B[k+9, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+9] * B[k+9,n+8:n+16]
     vbroadcastss ymm3,  [rax+9*4+1*128*4]  # [ARITH] Load A[m+1, k+9]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+9] * B[k+9,n:n+8]
@@ -1628,9 +1628,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+9] * B[k+9,n+8:n+16]
                                            # [ARITH] K=10
     vmovaps      ymm4,  [rbx+10*160*4]     # [ARITH] Load B[k+10, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+10*160*4+32]  # [ARITH] Load B[k+10, n+8:n+16]
     vbroadcastss ymm3,  [rax+10*4+0*128*4] # [ARITH] Load A[m+0, k+10]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+10] * B[k+10,n:n+8]
+    vmovaps      ymm5,  [rbx+10*160*4+32]  # [ARITH] Load B[k+10, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+10] * B[k+10,n+8:n+16]
     vbroadcastss ymm3,  [rax+10*4+1*128*4] # [ARITH] Load A[m+1, k+10]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+10] * B[k+10,n:n+8]
@@ -1646,9 +1646,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+10] * B[k+10,n+8:n+16]
                                            # [ARITH] K=11
     vmovaps      ymm4,  [rbx+11*160*4]     # [ARITH] Load B[k+11, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+11*160*4+32]  # [ARITH] Load B[k+11, n+8:n+16]
     vbroadcastss ymm3,  [rax+11*4+0*128*4] # [ARITH] Load A[m+0, k+11]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+11] * B[k+11,n:n+8]
+    vmovaps      ymm5,  [rbx+11*160*4+32]  # [ARITH] Load B[k+11, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+11] * B[k+11,n+8:n+16]
     vbroadcastss ymm3,  [rax+11*4+1*128*4] # [ARITH] Load A[m+1, k+11]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+11] * B[k+11,n:n+8]
@@ -1664,9 +1664,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+11] * B[k+11,n+8:n+16]
                                            # [ARITH] K=12
     vmovaps      ymm4,  [rbx+12*160*4]     # [ARITH] Load B[k+12, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+12*160*4+32]  # [ARITH] Load B[k+12, n+8:n+16]
     vbroadcastss ymm3,  [rax+12*4+0*128*4] # [ARITH] Load A[m+0, k+12]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+12] * B[k+12,n:n+8]
+    vmovaps      ymm5,  [rbx+12*160*4+32]  # [ARITH] Load B[k+12, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+12] * B[k+12,n+8:n+16]
     vbroadcastss ymm3,  [rax+12*4+1*128*4] # [ARITH] Load A[m+1, k+12]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+12] * B[k+12,n:n+8]
@@ -1682,9 +1682,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+12] * B[k+12,n+8:n+16]
                                            # [ARITH] K=13
     vmovaps      ymm4,  [rbx+13*160*4]     # [ARITH] Load B[k+13, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+13*160*4+32]  # [ARITH] Load B[k+13, n+8:n+16]
     vbroadcastss ymm3,  [rax+13*4+0*128*4] # [ARITH] Load A[m+0, k+13]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+13] * B[k+13,n:n+8]
+    vmovaps      ymm5,  [rbx+13*160*4+32]  # [ARITH] Load B[k+13, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+13] * B[k+13,n+8:n+16]
     vbroadcastss ymm3,  [rax+13*4+1*128*4] # [ARITH] Load A[m+1, k+13]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+13] * B[k+13,n:n+8]
@@ -1700,9 +1700,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+13] * B[k+13,n+8:n+16]
                                            # [ARITH] K=14
     vmovaps      ymm4,  [rbx+14*160*4]     # [ARITH] Load B[k+14, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+14*160*4+32]  # [ARITH] Load B[k+14, n+8:n+16]
     vbroadcastss ymm3,  [rax+14*4+0*128*4] # [ARITH] Load A[m+0, k+14]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+14] * B[k+14,n:n+8]
+    vmovaps      ymm5,  [rbx+14*160*4+32]  # [ARITH] Load B[k+14, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+14] * B[k+14,n+8:n+16]
     vbroadcastss ymm3,  [rax+14*4+1*128*4] # [ARITH] Load A[m+1, k+14]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+14] * B[k+14,n:n+8]
@@ -1718,9 +1718,9 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+14] * B[k+14,n+8:n+16]
                                            # [ARITH] K=15
     vmovaps      ymm4,  [rbx+15*160*4]     # [ARITH] Load B[k+15, n  :n+ 8]
-    vmovaps      ymm5,  [rbx+15*160*4+32]  # [ARITH] Load B[k+15, n+8:n+16]
     vbroadcastss ymm3,  [rax+15*4+0*128*4] # [ARITH] Load A[m+0, k+15]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+15] * B[k+15,n:n+8]
+    vmovaps      ymm5,  [rbx+15*160*4+32]  # [ARITH] Load B[k+15, n+8:n+16]
     vfmadd231ps  ymm7,   ymm3,  ymm5       # [ARITH]  => acc01 += A[0,k+15] * B[k+15,n+8:n+16]
     vbroadcastss ymm3,  [rax+15*4+1*128*4] # [ARITH] Load A[m+1, k+15]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+15] * B[k+15,n:n+8]
