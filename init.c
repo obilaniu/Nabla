@@ -477,11 +477,11 @@ int main(int argc, char* argv[]){
     
     for(i=0;i<160;i++){
         for(j=0;j<128;j++){
-            A[i][j] = 1.0f;     /* A is ones() */
-            B[j][i] = (j+i)&127;/* B is circulant(range(127)) */
+            A[i][j] = 1.0f;         /* A is ones() */
+            B[j][i] = ((j+i)&127)+1;/* B is circulant(range(127)) */
         }
         for(j=0;j<160;j++){
-            C[j][i] = 0;        /* C is zeroes() */
+            C[j][i] = 1.0;          /* C is zeroes() */
         }
     }
     
@@ -513,7 +513,7 @@ int main(int argc, char* argv[]){
         int K0   = (           (63^M) << 8 | (3^P)<< 6 | (15^K) << 2);
         int cnt  = ( N << 14 |     M  << 8 |    P << 6 |     K  << 2);
         int pcnt = ( N << 14 | (-0+M) << 8 |    0 << 6 |     K  << 2);
-        sgemm_test(*A, *B, *C, K0, cnt, pcnt, 1.0f, 0.0f);
+        sgemm_test(*A, *B, *C, K0, cnt, pcnt, 1.0f, 1.0f);
     }
 #if NABLA_AMD
     Temperf = nabla_x86_rdpru(0);
