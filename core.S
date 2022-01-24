@@ -1700,29 +1700,39 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     #
     test         edi,    KKmask            # [ILOOP] Exit if old K == 0
     jnz .Lsgemm_zen2_bu_core_16x_unroll_accumulate
-    .byte 0x66, 0x90
+    .align 16
     
     #
     # Eject accumulators and clear.
     #
+#if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+0*160*4],    ymm6     # [EJECT] C[0][n:n+8]
     vmovntps    [rdx+0*160*4+32], ymm7     # [EJECT] C[0][n+8:n+16]
+#endif
     vxorps       ymm6,   ymm6,    ymm6
     vxorps       ymm7,   ymm7,    ymm7
+#if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+1*160*4],    ymm8     # [EJECT] C[1][n:n+8]
     vmovntps    [rdx+1*160*4+32], ymm9     # [EJECT] C[1][n+8:n+16]
+#endif
     vmovaps      ymm8,   ymm6
     vmovaps      ymm9,   ymm7
+#if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+2*160*4],    ymm10    # [EJECT] C[2][n:n+8]
     vmovntps    [rdx+2*160*4+32], ymm11    # [EJECT] C[2][n+8:n+16]
+#endif
     vmovaps      ymm10,  ymm6
     vmovaps      ymm11,  ymm7
+#if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+3*160*4],    ymm12    # [EJECT] C[3][n:n+8]
     vmovntps    [rdx+3*160*4+32], ymm13    # [EJECT] C[3][n+8:n+16]
+#endif
     vmovaps      ymm12,  ymm6
     vmovaps      ymm13,  ymm7
+#if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+4*160*4],    ymm14    # [EJECT] C[4][n:n+8]
     vmovntps    [rdx+4*160*4+32], ymm15    # [EJECT] C[4][n+8:n+16]
+#endif
     vmovaps      ymm14,  ymm6
     vmovaps      ymm15,  ymm7
     leaq         rax,   [r13+rsi]          # [EJECT] Install A-pointer
