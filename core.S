@@ -1,66 +1,3 @@
-# SGEMM
-#   - Dtype: float32
-#   - Basic unit: A{5,64} x B{64,16} = C{5,16} (Accumulator: 10x YMM registers)
-#     - Cost:
-#       - Insn:    10x64 =  640 FMA (bottleneck; IPC throughput)
-#       - Insn:     7x64 =  448 LD  (total: 64*(16+5)*4  =  5.25   KB)
-#       - Insn:      5x2 =   10 ST  (total: 10*32 = 320B =  0.3125 KB, NT-hinted?)
-#       - Time: 320 cc
-#       - L1d occupancy:       64*(16+5)*4     =  5.25  KB   < 32 KB
-#       - L1d  -> Core Rd BW:  64*(16+5)*4/320 = 16.8   B/cc < 64 B/cc
-#       - Core -> L1d  Wr BW:        10*32/320 =  1.0   B/cc < 32 B/cc
-#   
-#   - Subset: The execution of thirty-two basic units
-#              |   B0  |   B1  |   B2  |   B3
-#        ------+-------+-------+-------+-------
-#          A0  |  A0B0 |  A0B1 |  A0B2 |  A0B3
-#          A1  |  A1B0 |  A1B1 |  A1B2 |  A1B3
-#          A2  |  A2B0 |  A2B1 |  A2B2 |  A2B3
-#          A3  |  A3B0 |  A3B1 |  A3B2 |  A3B3
-#          A4  |  A4B0 |  A4B1 |  A4B2 |  A4B3
-#          A5  |  A5B0 |  A5B1 |  A5B2 |  A5B3
-#          A6  |  A6B0 |  A6B1 |  A6B2 |  A6B3
-#          A7  |  A7B0 |  A7B1 |  A7B2 |  A7B3
-#     loading eight A-slices and four B-slices, and performing every contraction
-#     between them, effectively performing A{40,64} x B{64,64} = C{40,64}.
-#     - Cost:
-#       - Insn:  20480 FMA, 14336 LD, 320 ST
-#       - Time:  10240 cc
-#       - L1d occupancy:       64*(16*4+5*8)*4       = 26     KB   < 32 KB
-#       - L1d  -> Core Rd BW:  64*(16*4+5*8)*4/10240 =  2.6   B/cc < 32 B/cc
-#                                                      (+1.0 if consuming accumulators!)
-#       - Core -> L1d  Wr BW:         32*10*32/10240 =  1.0   B/cc < 32 B/cc
-#     - Collision Analysis:
-#       - A-slices: 8 contiguous slices, read sequentially (by stride of 4 bytes).
-#                   Full occupancy of 8*5*64*sizeof(float) = 10KB = 2.5 cache ways.
-#       - B-slices: 4 contiguous slices, read in 64 blocks of 16 floats (64 bytes),
-#                   strided by 320 floats (1280 bytes). When a slice is strided by
-#                   1280 bytes = 20 = 5x4 cachelines, only 1/4 of all cache sets
-#                   are used, but four contiguous slices achieve full occupancy at
-#                   4*16*64*sizeof(float) = 16KB = 4 cache ways.
-#   
-#   - Set: The execution of forty subsets
-#               | B0:B3 | B4:B7 | B8:B11|B12:B15|B16:B19
-#        -------+-------+-------+-------+-------+-------
-#        A0:A7  |  SS00 |  SS01 |  SS02 |  SS03 |  SS04
-#        A8:A15 |  SS10 |  SS11 |  SS12 |  SS13 |  SS14
-#       A16:A23 |  SS20 |  SS21 |  SS22 |  SS23 |  SS24
-#       A24:A31 |  SS30 |  SS31 |  SS32 |  SS33 |  SS34
-#       A32:A39 |  SS40 |  SS41 |  SS42 |  SS43 |  SS44
-#       A40:A47 |  SS50 |  SS51 |  SS52 |  SS53 |  SS54
-#       A48:A55 |  SS60 |  SS61 |  SS62 |  SS63 |  SS64
-#       A56:A63 |  SS70 |  SS71 |  SS72 |  SS73 |  SS74
-#     loading sixty-four A-slices and twenty B-slices, and performing every contraction
-#     between them, effectively performing A{320,64} x B{64,320} = C{320,320}.
-#     - Cost:
-#       - Insn:  819200 FMA, 573440 LD, 12800 ST
-#       - Time:  409600 cc
-#       - L2 occupancy:        64*(16*20+5*64)*4        = 160     KB   < 512 KB
-#       - L2   -> L1d  Rd BW:  64*(16*20+5*64)*4/409600 =   0.4   B/cc < 32 B/cc
-#                                                      (+1.0 if consuming accumulators!)
-#       - L1d  -> L2   Wr BW:        64*20*10*32/409600 =   1.0   B/cc < 32 B/cc
-
-
 ##
 ##                   SYSTEM V X86-64 CALLING CONVENTION
 ##
@@ -99,6 +36,31 @@
 ## function entry, the return address is adjacent to the seventh integer argument
 ## on the stack.
 ##
+
+
+##
+##                   AMD-recommended NOP instruction encodings for padding
+##
+## Len | Encoding
+## ----+----------------------------------
+##   1 | .byte 0x90
+##   2 | .byte 0x66, 0x90
+##   3 | .byte 0x0F, 0x1F, 0x00
+##   4 | .byte 0x0F, 0x1F, 0x40, 0x00
+##   5 | .byte 0x0F, 0x1F, 0x44, 0x00, 0x00
+##   6 | .byte 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00
+##   7 | .byte 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00
+##   8 | .byte 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+##   9 | .byte 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+##  10 | .byte 0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+##  11 | .byte 0x66, 0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+##  12 | .byte 0x66, 0x66, 0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+##  13 | .byte 0x66, 0x66, 0x66, 0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+##  14 | .byte 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+##  15 | .byte 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+##
+
+
 
 
 .intel_syntax noprefix
@@ -1390,10 +1352,25 @@ sgemm_test:
 .globl sgemm_zen2_bu_core_16x_unroll_accumulate
 sgemm_zen2_bu_core_16x_unroll_accumulate:
 .Lsgemm_zen2_bu_core_16x_unroll_accumulate:#************ BU CORE 16X UNROLL ************
-    #                                      #
-    #                                      #             MAIN ARITHMETIC BODY
-    #                                      #           REGISTERS USED: RAX, RBX, YMMx
-    #                                      # [ARITH] K=0
+    #                                                    MAIN ARITHMETIC BODY                                 CURRENT POINTER C COMPUTATION &
+    #                                                                                                         CURRENT MODULO COUNTER (R8) DECREMENT &
+    #                                                                                                         CURRENT/NEXT POINTER A & B COMPUTATION
+    #
+    #                                                  REGISTERS I: RAX, RBX, YMMx                          REGISTERS I: R8, R12, R13, R14, R15
+    #                                                  REGISTERS O: RAX, RBX, YMMx                          REGISTERS O: R8, RCX, RDX, RDI, RSI
+    #                                                                                                       REGISTERS available:   RCX, RDX, RDI, RSI, R10, R11
+    #                                                                                                       REGISTERS unavailable: RAX, RBX, R9
+    #
+    #                                                                                             [COUNT] A-current-pointer (float A[M=160][K=128])
+    #                                                                                             [COUNT] B-current-pointer (float B[K=128][N=160])
+    #                                                                                             [COUNT] C-current-pointer (float C[M=160][N=160])
+    #                                                                                             [COUNT] 
+    #                                                                                             [COUNT] Coordinate System:
+    #                                                                                             [COUNT] 
+    #                                                                                             [COUNT]     Name:                  n/32 : m/5 : n&16 : k/8 : 1
+    #                                                                                             [COUNT]     Max:                     4     31    1      15   1
+    #                                                                                             [COUNT]     Bits:                    3      6    2       5   1
+    #                                      # [ARITH] K=0                                          [COUNT]     Offset:                 14      8    6       1   0
     vmovaps      ymm4,  [rbx+0*160*4]      # [ARITH] Load B[k+0, n  :n+ 8]
     vbroadcastss ymm3,  [rax+0*4+0*128*4]  # [ARITH] Load A[m+0, k+0]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+0] * B[k+0,n:n+8]
@@ -1456,27 +1433,6 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vbroadcastss ymm3,  [rax+3*4+1*128*4]  # [ARITH] Load A[m+1, k+3]
     vfmadd231ps  ymm8,   ymm3,  ymm4       # [ARITH]  => acc10 += A[1,k+3] * B[k+3,n:n+8]
     vfmadd231ps  ymm9,   ymm3,  ymm5       # [ARITH]  => acc11 += A[1,k+3] * B[k+3,n+8:n+16]
-    /**/                                                                                        #
-    /**/                                                                                        #             CURRENT POINTER C COMPUTATION &
-    /**/                                                                                        #             CURRENT MODULO COUNTER (R8) DECREMENT &
-    /**/                                                                                        #             CURRENT/NEXT POINTER A & B COMPUTATION
-    /**/                                                                                        #
-    /**/                                                                                        #           REGISTERS I: R8, R12, R13, R14, R15
-    /**/                                                                                        #           REGISTERS O: R8, RCX, RDX, RDI, RSI
-    /**/                                                                                        #           REGISTERS available:   RCX, RDX, RDI, RSI, R10, R11
-    /**/                                                                                        #           REGISTERS unavailable: RAX, RBX, R9
-    /**/                                                                                        #
-    /**/                                                                                        # [COUNT] A-current-pointer (float A[M=160][K=128])
-    /**/                                                                                        # [COUNT] B-current-pointer (float B[K=128][N=160])
-    /**/                                                                                        # [COUNT] C-current-pointer (float C[M=160][N=160])
-    /**/                                                                                        # [COUNT] 
-    /**/                                                                                        # [COUNT] Coordinate System:
-    /**/                                                                                        # [COUNT] 
-    /**/                                                                                        # [COUNT]     Name:                  n/32 : m/5 : n&16 : k/8 : 1
-    /**/                                                                                        # [COUNT]     Max:                     4     31    1      15   1
-    /**/                                                                                        # [COUNT]     Bits:                    3      6    2       5   1
-    /**/                                                                                        # [COUNT]     Offset:                 14      8    6       1   0
-    /**/                                                                                        # [COUNT]
     /**/                                        mov          edx,    r8d                        # [COUNT] = CURRENT COUNTER
     vbroadcastss ymm3,  [rax+3*4+2*128*4]  # [ARITH] Load A[m+2, k+3]
     vfmadd231ps  ymm10,  ymm3,  ymm4       # [ARITH]  => acc20 += A[2,k+3] * B[k+3,n:n+8]
