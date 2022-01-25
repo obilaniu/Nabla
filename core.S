@@ -1070,15 +1070,18 @@ sgemm_test:
     leaq         r10,   [rip+0f]                         # Install return pointer
     vpcmpeqb     ymm2,   ymm2,   ymm2
     vxorps       ymm6,   ymm6,   ymm6
-    vxorps       ymm7,   ymm7,   ymm7
-    vxorps       ymm8,   ymm8,   ymm8
-    vxorps       ymm9,   ymm9,   ymm9
-    vxorps       ymm10,  ymm10,  ymm10
-    vxorps       ymm11,  ymm11,  ymm11
-    vxorps       ymm12,  ymm12,  ymm12
-    vxorps       ymm13,  ymm13,  ymm13
-    vxorps       ymm14,  ymm14,  ymm14
-    vxorps       ymm15,  ymm15,  ymm15
+    vmovaps      ymm3,   ymm6
+    vmovaps      ymm4,   ymm6
+    vmovaps      ymm5,   ymm6
+    vmovaps      ymm7,   ymm6
+    vmovaps      ymm8,   ymm6
+    vmovaps      ymm9,   ymm6
+    vmovaps      ymm10,  ymm6
+    vmovaps      ymm11,  ymm6
+    vmovaps      ymm12,  ymm6
+    vmovaps      ymm13,  ymm6
+    vmovaps      ymm14,  ymm6
+    vmovaps      ymm15,  ymm6
     sfence
     jmp .Lsgemm_zen2_bu_core_16x_unroll_accumulate       # EXECUTE
 0:  sfence
@@ -1710,31 +1713,31 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vmovntps    [rdx+0*160*4+32], ymm7     # [EJECT] C[0][n+8:n+16]
 #endif
     vxorps       ymm6,   ymm6,    ymm6
-    vxorps       ymm7,   ymm7,    ymm7
+    vmovaps      ymm7,   ymm6
 #if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+1*160*4],    ymm8     # [EJECT] C[1][n:n+8]
     vmovntps    [rdx+1*160*4+32], ymm9     # [EJECT] C[1][n+8:n+16]
 #endif
     vmovaps      ymm8,   ymm6
-    vmovaps      ymm9,   ymm7
+    vmovaps      ymm9,   ymm6
 #if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+2*160*4],    ymm10    # [EJECT] C[2][n:n+8]
     vmovntps    [rdx+2*160*4+32], ymm11    # [EJECT] C[2][n+8:n+16]
 #endif
     vmovaps      ymm10,  ymm6
-    vmovaps      ymm11,  ymm7
+    vmovaps      ymm11,  ymm6
 #if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+3*160*4],    ymm12    # [EJECT] C[3][n:n+8]
     vmovntps    [rdx+3*160*4+32], ymm13    # [EJECT] C[3][n+8:n+16]
 #endif
     vmovaps      ymm12,  ymm6
-    vmovaps      ymm13,  ymm7
+    vmovaps      ymm13,  ymm6
 #if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovntps    [rdx+4*160*4],    ymm14    # [EJECT] C[4][n:n+8]
     vmovntps    [rdx+4*160*4+32], ymm15    # [EJECT] C[4][n+8:n+16]
 #endif
     vmovaps      ymm14,  ymm6
-    vmovaps      ymm15,  ymm7
+    vmovaps      ymm15,  ymm6
     leaq         rax,   [r13+rsi]          # [EJECT] Install A-pointer
     leaq         rbx,   [r14+rcx]          # [EJECT] Install B-pointer
     
@@ -1744,41 +1747,3 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     test         edi,    KKMNPmask         # [OLOOP] Test if old countdown register == 0
     jnz .Lsgemm_zen2_bu_core_16x_unroll_accumulate
     jmp          r10                       # [RET]   Return to *r10
-
-
-
-    #
-    ## Old eject logic
-    #
-    # leaq         rax,   [r13+rsi]          # [EJECT] Install A-pointer
-    # leaq         rbx,   [r14+rcx]          # [EJECT] Install B-pointer
-    # vmovaps      ymm4,  [rbx+0*160*4]      # [EJECT]     Load B[k+0, n  :n+ 8]
-    # vmovaps      ymm5,  [rbx+0*160*4+32]   # [EJECT]     Load B[k+0, n+8:n+16]
-    # vmovntps    [rdx+0*160*4],    ymm6     # [EJECT] C[0][n:n+8]
-    # vmovntps    [rdx+0*160*4+32], ymm7     # [EJECT] C[0][n+8:n+16]
-    # vbroadcastss ymm3,  [rax+0*4+0*128*4]  # [EJECT]     Load A[m+0, k+0]
-    # vmulps       ymm6,   ymm3,  ymm4       # [EJECT]      => acc00 += A[0,k+0] * B[k,n:n+8]
-    # vmulps       ymm7,   ymm3,  ymm5       # [EJECT]      => acc01 += A[0,k+0] * B[k,n+8:n+16]
-    # vmovntps    [rdx+1*160*4],    ymm8     # [EJECT] C[1][n:n+8]
-    # vmovntps    [rdx+1*160*4+32], ymm9     # [EJECT] C[1][n+8:n+16]
-    # vbroadcastss ymm3,  [rax+0*4+1*128*4]  # [EJECT]     Load A[m+1, k+0]
-    # vmulps       ymm8,   ymm3,  ymm4       # [EJECT]      => acc10 += A[1,k+0] * B[k,n:n+8]
-    # vmulps       ymm9,   ymm3,  ymm5       # [EJECT]      => acc11 += A[1,k+0] * B[k,n+8:n+16]
-    # vmovntps    [rdx+2*160*4],    ymm10    # [EJECT] C[2][n:n+8]
-    # vmovntps    [rdx+2*160*4+32], ymm11    # [EJECT] C[2][n+8:n+16]
-    # vbroadcastss ymm3,  [rax+0*4+2*128*4]  # [EJECT]     Load A[m+2, k+0]
-    # vmulps       ymm10,  ymm3,  ymm4       # [EJECT]      => acc20 += A[2,k+0] * B[k,n:n+8]
-    # vmulps       ymm11,  ymm3,  ymm5       # [EJECT]      => acc21 += A[2,k+0] * B[k,n+8:n+16]
-    # vmovntps    [rdx+3*160*4],    ymm12    # [EJECT] C[3][n:n+8]
-    # vmovntps    [rdx+3*160*4+32], ymm13    # [EJECT] C[3][n+8:n+16]
-    # vbroadcastss ymm3,  [rax+0*4+3*128*4]  # [EJECT]     Load A[m+3, k+0]
-    # vmulps       ymm12,  ymm3,  ymm4       # [EJECT]      => acc30 += A[3,k+0] * B[k,n:n+8]
-    # vmulps       ymm13,  ymm3,  ymm5       # [EJECT]      => acc31 += A[3,k+0] * B[k,n+8:n+16]
-    # vmovntps    [rdx+4*160*4],    ymm14    # [EJECT] C[4][n:n+8]
-    # vmovntps    [rdx+4*160*4+32], ymm15    # [EJECT] C[4][n+8:n+16]
-    # vbroadcastss ymm3,  [rax+0*4+4*128*4]  # [EJECT]     Load A[m+4, k+0]
-    # vmulps       ymm14,  ymm3,  ymm4       # [EJECT]      => acc40 += A[4,k+0] * B[k,n:n+8]
-    # vmulps       ymm15,  ymm3,  ymm5       # [EJECT]      => acc41 += A[4,k+0] * B[k,n+8:n+16]
-    # test         edi,    KKMNPmask         # [OLOOP] Test if old countdown register == 0
-    # jnz .Lsgemm_zen2_bu_core_16x_unroll_skip_first_iter
-
