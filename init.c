@@ -495,7 +495,8 @@ int main(int argc, char* argv[]){
     }
     
     extern void sgemm_test(float* A, float* B, float* C,
-                           int K0, int counter, int prefetch_counter, float alpha, float beta);
+                           uint64_t K0, uint64_t counter,
+                           float alpha, float beta);
     
 #if 0
     printf("R:                   %lu\n"
@@ -512,8 +513,7 @@ int main(int argc, char* argv[]){
     for(i=0;i<(int)R;i++){
         int K0   = (           (63^M) << 8 | (3^P)<< 6 | (15^K) << 2);
         int cnt  = ( N << 14 |     M  << 8 |    P << 6 |     K  << 2);
-        int pcnt = ( N << 14 | (-0+M) << 8 |    0 << 6 |     K  << 2);
-        sgemm_test(*A, *B, *C, K0, cnt, pcnt, 1.0f, 1.0f);
+        sgemm_test(*A, *B, *C, K0, cnt, 1.0f, 1.0f);
     }
 #if NABLA_AMD
     Temperf = nabla_x86_rdpru(0);
