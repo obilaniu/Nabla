@@ -1704,6 +1704,8 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     test         edi,    KKmask            # [ILOOP] Exit if old K == 0
     jnz .Lsgemm_zen2_bu_core_16x_unroll_accumulate
     .align 16
+    leaq         rax,   [r13+rsi]          # [EJECT] Install A-pointer
+    leaq         rbx,   [r14+rcx]          # [EJECT] Install B-pointer
     
     #
     # Eject accumulators and clear.
@@ -1738,8 +1740,6 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
 #endif
     vmovaps      ymm14,  ymm6
     vmovaps      ymm15,  ymm6
-    leaq         rax,   [r13+rsi]          # [EJECT] Install A-pointer
-    leaq         rbx,   [r14+rcx]          # [EJECT] Install B-pointer
     
     #
     # Outer Loop Exit Test and Return R10
@@ -1747,3 +1747,4 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     test         edi,    KKMNPmask         # [OLOOP] Test if old countdown register == 0
     jnz .Lsgemm_zen2_bu_core_16x_unroll_accumulate
     jmp          r10                       # [RET]   Return to *r10
+.align 64
