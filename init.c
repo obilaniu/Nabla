@@ -273,9 +273,17 @@ int main(int argc, char* argv[]){
     uint64_t mperf, aperf;
     
     int i,j;
-    int argn[6] = {0};
-    for(i=1;i<(int)(sizeof argn/sizeof *argn);i++)
+    int argn[7] = {0, 48829, 2, 5, 32, 8, 5};
+    for(i=1;i<(int)(sizeof argn/sizeof *argn) && i<argc;i++)
         argn[i] = i<argc ? strtoul(argv[i], 0, 0) : 0;
+    
+    const unsigned long R = argn[1],   P = argn[2]-1,
+                        N = argn[3]-1, M = argn[4]-1,
+                        K = argn[5]-1, O = argn[6],
+                        fp = R*(M+1)*5*(N+1)*(P+1)*16*(K+1)*16*2, /* The x2 is for FMA = 2 FLOPS */
+                        cc = R*(M+1)  *(N+1)*(P+1)   *(K+1)*80;   /* The 80 is for 160 FMAs per loop iteration @ 2 FMA/cc */
+    (void)fp;
+    (void)cc;
     
 #if 0
     const int EAX=0, EBX=1, ECX=2, EDX=3;
@@ -474,6 +482,7 @@ int main(int argc, char* argv[]){
     float (*A)[128] = (void*)(L + 0);  /* float A[160][128]; */
     float (*B)[160] = (void*)(A + 160);/* float B[128][160]; */
     float (*C)[160] = (void*)(B + 128);/* float C[160][160]; */
+    C = (void*)((char*)C + CL_SIZE*O);
     
     for(i=0;i<160;i++){
         for(j=0;j<128;j++){
@@ -488,22 +497,13 @@ int main(int argc, char* argv[]){
     extern void sgemm_test(float* A, float* B, float* C,
                            int K0, int counter, int prefetch_counter, float alpha, float beta);
     
-    const unsigned long R  = (argn[1] ? argn[1] : 10000),
-                        P  = (argn[2] ? argn[2] :     2)-1,
-                        N  = (argn[3] ? argn[3] :     5)-1,
-                        M  = (argn[4] ? argn[4] :    32)-1,
-                        K  = (argn[5] ? argn[5] :     8)-1,
-                        fp = R*(M+1)*5 *(N+1)*(P+1)*16      *(K+1)*16*2, /* The x2 is for FMA = 2 FLOPS */
-                        cc = R*(M+1)   *(N+1)*(P+1)         *(K+1)*80;   /* The 80 is for 160 FMAs per loop iteration @ 2 FMA/cc */
-    (void)fp;
-    (void)cc;
-    
 #if 0
     printf("R:                   %lu\n"
            "M:                   %lu\n"
            "N:                   %lu (P: %lu)\n"
-           "K:                   %lu\n",
-           R, (M+1)*5, (N+1)*(P+1)*16, P+1, (K+1)*8);
+           "K:                   %lu\n"
+           "O:                   %lu\n",
+           R, (M+1)*5, (N+1)*(P+1)*16, P+1, (K+1)*8, O);
 #endif
 #if NABLA_AMD
     Tsmperf = nabla_x86_rdpru(0);
