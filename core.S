@@ -1390,6 +1390,7 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     vfmadd231ps  ymm14,  ymm3,  ymm4       # [ARITH]  => acc40 += A[4,k+0] * B[k+0,n:n+8]
     vfmadd231ps  ymm15,  ymm3,  ymm5       # [ARITH]  => acc41 += A[4,k+0] * B[k+0,n+8:n+16]
     #                                      # [ARITH] K=1
+.Lsgemm_zen2_bu_core_16x_unroll_peel_top:
     vmovaps      ymm4,  [rsi+1*160*4]      # [ARITH] Load B[k+1, n  :n+ 8]
     vbroadcastss ymm3,  [rdi+1*4+0*128*4]  # [ARITH] Load A[m+0, k+1]
     vfmadd231ps  ymm6,   ymm3,  ymm4       # [ARITH]  => acc00 += A[0,k+1] * B[k+1,n:n+8]
@@ -1706,41 +1707,48 @@ sgemm_zen2_bu_core_16x_unroll_accumulate:
     #
     # Eject accumulators and clear.
     #
-#if !defined(STORES_DISABLED) || !STORES_DISABLED
     vmovaps     [rdx+0*160*4],    ymm6     # [EJECT] C[0][n:n+8]
-    vmovaps     [rdx+0*160*4+32], ymm7     # [EJECT] C[0][n+8:n+16]
-#endif
+    vmovaps      ymm4,  [rsi+0*160*4]      # [ARITH] Load B[k+0, n  :n+ 8]
+    vbroadcastss ymm3,  [rdi+0*4+0*128*4]  # [ARITH] Load A[m+0, k+0]
     vxorps       ymm6,   ymm6,    ymm6
-    vmovaps      ymm7,   ymm6
-#if !defined(STORES_DISABLED) || !STORES_DISABLED
+    vfmadd231ps  ymm6,   ymm3,    ymm4     # [ARITH]  => acc00 += A[0,k+0] * B[k+0,n:n+8]
+    vmovaps     [rdx+0*160*4+32], ymm7     # [EJECT] C[0][n+8:n+16]
+    vxorps       ymm7,   ymm7,    ymm7
+    vmovaps      ymm5,  [rsi+0*160*4+32]   # [ARITH] Load B[k+0, n+8:n+16]
+    vfmadd231ps  ymm7,   ymm3,    ymm5     # [ARITH]  => acc01 += A[0,k+0] * B[k+0,n+8:n+16]
+    vbroadcastss ymm3,  [rdi+0*4+1*128*4]  # [ARITH] Load A[m+1, k+0]
     vmovaps     [rdx+1*160*4],    ymm8     # [EJECT] C[1][n:n+8]
+    vxorps       ymm8,   ymm8,    ymm8
+    vbroadcastss ymm2,  [rdi+0*4+2*128*4]  # [ARITH] Load A[m+2, k+0]
+    vfmadd231ps  ymm8,   ymm3,    ymm4     # [ARITH]  => acc10 += A[1,k+0] * B[k+0,n:n+8]
     vmovaps     [rdx+1*160*4+32], ymm9     # [EJECT] C[1][n+8:n+16]
-#endif
-    vmovaps      ymm8,   ymm6
-    vmovaps      ymm9,   ymm6
-#if !defined(STORES_DISABLED) || !STORES_DISABLED
+    vxorps       ymm9,   ymm9,    ymm9
+    vfmadd231ps  ymm9,   ymm3,    ymm5     # [ARITH]  => acc11 += A[1,k+0] * B[k+0,n+8:n+16]
+    vbroadcastss ymm3,  [rdi+0*4+3*128*4]  # [ARITH] Load A[m+3, k+0]
     vmovaps     [rdx+2*160*4],    ymm10    # [EJECT] C[2][n:n+8]
+    vxorps       ymm10,  ymm10,   ymm10
+    vfmadd231ps  ymm10,  ymm2,    ymm4     # [ARITH]  => acc20 += A[2,k+0] * B[k+0,n:n+8]
     vmovaps     [rdx+2*160*4+32], ymm11    # [EJECT] C[2][n+8:n+16]
-#endif
-    vmovaps      ymm10,  ymm6
-    vmovaps      ymm11,  ymm6
-#if !defined(STORES_DISABLED) || !STORES_DISABLED
+    vxorps       ymm11,  ymm11,   ymm11
+    vfmadd231ps  ymm11,  ymm2,    ymm5     # [ARITH]  => acc21 += A[2,k+0] * B[k+0,n+8:n+16]
     vmovaps     [rdx+3*160*4],    ymm12    # [EJECT] C[3][n:n+8]
+    vxorps       ymm12,  ymm12,   ymm12
+    vfmadd231ps  ymm12,  ymm3,    ymm4     # [ARITH]  => acc30 += A[3,k+0] * B[k+0,n:n+8]
     vmovaps     [rdx+3*160*4+32], ymm13    # [EJECT] C[3][n+8:n+16]
-#endif
-    vmovaps      ymm12,  ymm6
-    vmovaps      ymm13,  ymm6
-#if !defined(STORES_DISABLED) || !STORES_DISABLED
+    vxorps       ymm13,  ymm13,   ymm13
+    vfmadd231ps  ymm13,  ymm3,    ymm5     # [ARITH]  => acc31 += A[3,k+0] * B[k+0,n+8:n+16]
     vmovaps     [rdx+4*160*4],    ymm14    # [EJECT] C[4][n:n+8]
+    vxorps       ymm14,  ymm14,   ymm14
+    vbroadcastss ymm2,  [rdi+0*4+4*128*4]  # [ARITH] Load A[m+4, k+0]
+    vfmadd231ps  ymm14,  ymm2,    ymm4     # [ARITH]  => acc40 += A[4,k+0] * B[k+0,n:n+8]
     vmovaps     [rdx+4*160*4+32], ymm15    # [EJECT] C[4][n+8:n+16]
-#endif
-    vmovaps      ymm14,  ymm6
-    vmovaps      ymm15,  ymm6
+    vxorps       ymm15,  ymm15,   ymm15
+    vfmadd231ps  ymm15,  ymm2,    ymm5     # [ARITH]  => acc41 += A[4,k+0] * B[k+0,n+8:n+16]
     
     #
     # Outer Loop Exit Test and Return R11
     #
     test         ebx,    KKMNPmask         # [OLOOP] Test if old countdown register == 0
-    jnz .Lsgemm_zen2_bu_core_16x_unroll_accumulate
+    jnz .Lsgemm_zen2_bu_core_16x_unroll_peel_top
     jmp          r11                       # [RET]   Return to *r11
 .align 64
